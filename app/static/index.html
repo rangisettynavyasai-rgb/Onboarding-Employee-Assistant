@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enterprise AI Assistant | Google Cloud Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0B0F19;
+      --bg-surface: #111827;
+      --bg-card: rgba(17, 24, 39, 0.75);
+      --bg-glass: rgba(31, 41, 55, 0.4);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(99, 102, 241, 0.3);
+      --text-primary: #F9FAFB;
+      --text-secondary: #9CA3AF;
+      --text-muted: #6B7280;
+      --accent-indigo: #6366F1;
+      --accent-purple: #8B5CF6;
+      --accent-emerald: #10B981;
+      --accent-amber: #F59E0B;
+      --accent-rose: #EF4444;
+      --accent-cyan: #06B6D4;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.15);
+      --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.12) 0px, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, .brand-font { font-family: 'Outfit', sans-serif; letter-spacing: -0.02em; }
+
+    /* Layout Containers */
+    .app-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Auth Screen */
+    #auth-view {
+      margin: auto;
+      width: min(520px, 100%);
+      padding: 44px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-card), var(--shadow-glow);
+      text-align: center;
+    }
+    .auth-logo {
+      width: 58px;
+      height: 58px;
+      margin: 0 auto 20px;
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-size: 26px;
+      box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+    }
+    .auth-title { font-size: 28px; margin-bottom: 10px; }
+    .auth-subtitle { color: var(--text-secondary); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+    
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      margin: 24px 0 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
+
+    .persona-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .persona-btn {
+      padding: 10px 14px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s ease;
+    }
+    .persona-btn:hover {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: var(--accent-indigo);
+      transform: translateY(-2px);
+    }
+    .persona-name { font-weight: 600; font-size: 13px; display: block; }
+    .persona-role { font-size: 11px; color: var(--text-secondary); }
+
+    /* Main Dashboard View */
+    #dashboard-view { display: none; flex: 1; flex-direction: column; gap: 24px; }
+
+    /* Top Navigation Header */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(16px);
+    }
+    .brand-section { display: flex; align-items: center; gap: 14px; }
+    .brand-badge {
+      font-size: 11px;
+      padding: 4px 10px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 20px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    .user-profile-widget { display: flex; align-items: center; gap: 16px; }
+    .role-tag {
+      font-size: 11px;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .role-employee { background: rgba(99, 102, 241, 0.2); color: #818CF8; border: 1px solid rgba(99, 102, 241, 0.4); }
+    .role-manager { background: rgba(245, 158, 11, 0.2); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .role-hr { background: rgba(236, 72, 153, 0.2); color: #F472B6; border: 1px solid rgba(236, 72, 153, 0.4); }
+    .role-it { background: rgba(6, 182, 212, 0.2); color: #22D3EE; border: 1px solid rgba(6, 182, 212, 0.4); }
+
+    .btn-secondary {
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover { background: rgba(239, 68, 68, 0.2); border-color: var(--accent-rose); }
+
+    /* Dashboard Main Grid */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+      flex: 1;
+    }
+
+    /* Left Sidebar: Proactive Onboarding & Ops */
+    .sidebar { display: flex; flex-direction: column; gap: 20px; }
+    .glass-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 22px;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-card);
+    }
+
+    /* Progress Widget */
+    .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .progress-bar-container {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-indigo), var(--accent-emerald));
+      transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .task-list { display: flex; flex-direction: column; gap: 10px; max-height: 280px; overflow-y: auto; }
+    .task-item {
+      padding: 10px 12px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .task-item.completed { border-color: rgba(16, 185, 129, 0.3); opacity: 0.6; }
+    .task-btn-done {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid var(--accent-emerald);
+      color: var(--accent-emerald);
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    /* Quick Ops Action Buttons */
+    .quick-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+    .action-card-btn {
+      padding: 12px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      cursor: pointer;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .action-card-btn:hover { background: rgba(99, 102, 241, 0.2); border-color: var(--accent-indigo); }
+    .action-card-icon { font-size: 16px; margin-bottom: 6px; display: block; }
+
+    /* Right Main Panel: Conversational Layer */
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-card);
+      height: 720px;
+    }
+    .chat-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .agent-status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-emerald);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--accent-emerald);
+    }
+
+    /* Message History Stream */
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .message-bubble {
+      max-width: 80%;
+      padding: 14px 18px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      line-height: 1.6;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .user-message {
+      align-self: flex-end;
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .assistant-message {
+      align-self: flex-start;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      border-bottom-left-radius: 4px;
+    }
+    .agent-badge-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin-bottom: 6px;
+      display: inline-block;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* Suggested Action Chips */
+    .chips-container { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .chip-btn {
+      font-size: 11px;
+      padding: 6px 12px;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #A5B4FC;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chip-btn:hover { background: var(--accent-indigo); color: white; }
+
+    /* Input Footer */
+    .chat-input-wrapper {
+      padding: 18px 24px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .chat-input {
+      flex: 1;
+      padding: 14px 18px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .chat-input:focus { border-color: var(--accent-indigo); box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
+    .btn-send {
+      padding: 14px 24px;
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+      border: 0;
+      border-radius: var(--radius-sm);
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .btn-send:hover { opacity: 0.92; transform: translateY(-1px); }
+    .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Modal / Popups */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      place-items: center;
+      padding: 20px;
+    }
+    .modal-card {
+      width: min(600px, 100%);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 28px;
+      box-shadow: var(--shadow-card);
+    }
+    .form-group { margin-bottom: 16px; text-align: left; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-control {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+  </style>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- 1. LOGIN / AUTHENTICATION VIEW -->
+    <section id="auth-view">
+      <div class="auth-logo">✦</div>
+      <h1 class="auth-title">Employee AI Assistant</h1>
+      <p class="auth-subtitle">Production-grade AI Grounded in Google Cloud Identity, BigQuery, GCS, and Firestore Native Mode.</p>
+
+      <!-- Real Google Identity Sign-In (Production) -->
+      <div id="google-button" style="display: flex; justify-content: center; margin-bottom: 16px;"></div>
+      <div id="auth-status" style="font-size: 13px; color: var(--text-muted); min-height: 20px;"></div>
+
+      <div class="divider">Or Test with Verified Persona</div>
+
+      <!-- Developer Persona Switcher for Instant Demo -->
+      <div class="persona-grid">
+        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-rahul')">
+          <span class="persona-name">Rahul Sharma</span>
+          <span class="persona-role">Day-1 SWE • Payments</span>
+        </button>
+        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-maya')">
+          <span class="persona-name">Maya Lin</span>
+          <span class="persona-role">Day-1 Intern • Platform</span>
+        </button>
+        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-sarah')">
+          <span class="persona-name">Sarah Jenkins</span>
+          <span class="persona-role">Manager • Payments</span>
+        </button>
+        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-amanda')">
+          <span class="persona-name">Amanda Walker</span>
+          <span class="persona-role">HR Specialist</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. MAIN SECURE ASSISTANT DASHBOARD -->
+    <section id="dashboard-view">
+      
+      <!-- Top Navigation Header -->
+      <header class="top-bar">
+        <div class="brand-section">
+          <div class="auth-logo" style="width: 38px; height: 38px; font-size: 18px; margin: 0;">✦</div>
+          <div>
+            <h2 style="font-size: 18px;">Patchamomma AI Assistant</h2>
+            <div style="font-size: 11px; color: var(--text-muted);">Zero-Trust Enterprise Perimeter • GCP Cloud Run</div>
+          </div>
+          <span class="brand-badge">PROD SECURE</span>
+        </div>
+
+        <div class="user-profile-widget">
+          <div style="text-align: right;">
+            <div id="user-display-name" style="font-weight: 600; font-size: 14px;"></div>
+            <div style="display: flex; gap: 6px; align-items: center; justify-content: flex-end; margin-top: 2px;">
+              <span id="user-display-team" style="font-size: 11px; color: var(--text-muted);"></span>
+              <span id="user-display-role" class="role-tag role-employee"></span>
+            </div>
+          </div>
+          <button class="btn-secondary" onclick="signOut()">Sign Out</button>
+        </div>
+      </header>
+
+      <!-- Dashboard Body Grid -->
+      <div class="dashboard-grid">
+        
+        <!-- Left Column: Proactive Guidance & Operations -->
+        <aside class="sidebar">
+          
+          <!-- Proactive Greeting Card -->
+          <div class="glass-card">
+            <h3 style="font-size: 15px; margin-bottom: 8px; color: var(--accent-cyan);">Proactive Greeting</h3>
+            <p id="proactive-greeting-text" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;"></p>
+          </div>
+
+          <!-- Onboarding Checklist Widget -->
+          <div class="glass-card">
+            <div class="progress-header">
+              <h3 style="font-size: 15px;">Onboarding Status</h3>
+              <span id="progress-percentage" style="font-size: 13px; font-weight: 700; color: var(--accent-emerald);">0%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            <div id="task-list-container" class="task-list">
+              <!-- Dynamically populated tasks -->
+            </div>
+          </div>
+
+          <!-- Operations Quick Actions -->
+          <div class="glass-card">
+            <h3 style="font-size: 15px; margin-bottom: 4px;">Quick Actions</h3>
+            <div class="quick-actions">
+              <button class="action-card-btn" onclick="checkTimesheet()">
+                <span class="action-card-icon">⏱️</span>
+                Timesheet Status
+              </button>
+              <button class="action-card-btn" onclick="openIncidentModal()">
+                <span class="action-card-icon">🚨</span>
+                Report IT Ticket
+              </button>
+              <button class="action-card-btn" onclick="quickPrompt('What are our corporate logging and coding standards?')">
+                <span class="action-card-icon">💻</span>
+                Coding Standards
+              </button>
+              <button class="action-card-btn" onclick="quickPrompt('Show me the Payments Architecture and Cloud SQL runbook')">
+                <span class="action-card-icon">📚</span>
+                Search Runbooks
+              </button>
+            </div>
+          </div>
+
+        </aside>
+
+        <!-- Right Column: Conversational AI Panel -->
+        <main class="chat-panel">
+          <div class="chat-header">
+            <div>
+              <h3 style="font-size: 16px;">Multi-Agent Conversational Hub</h3>
+              <div style="font-size: 12px; color: var(--text-muted);">Grounded in BigQuery, GCS Knowledge Mesh, & Firestore</div>
+            </div>
+            <div class="agent-status-indicator">
+              <div class="pulse-dot"></div>
+              <span>Supervisor Active</span>
+            </div>
+          </div>
+
+          <div id="chat-stream" class="chat-messages">
+            <!-- Messages stream here -->
+          </div>
+
+          <div class="chat-input-wrapper">
+            <input 
+              id="user-input-box" 
+              type="text" 
+              class="chat-input" 
+              placeholder="Ask anything about onboarding, team runbooks, coding standards, or operations..." 
+              onkeydown="if(event.key==='Enter') sendChatMessage()"
+            />
+            <button id="send-button" class="btn-send" onclick="sendChatMessage()">Send</button>
+          </div>
+        </main>
+
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- Incident Creation Modal -->
+  <div id="incident-modal" class="modal-backdrop">
+    <div class="modal-card">
+      <h3 style="font-size: 18px; margin-bottom: 14px;">Report IT or Platform Incident</h3>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="inc-category" class="form-control">
+          <option>VPN / Network Connectivity</option>
+          <option>Cloud SQL / Database Access</option>
+          <option>GKE Cluster / Kubernetes</option>
+          <option>IAM Permissions & Keys</option>
+          <option>Hardware & Workstation</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Summary of Issue</label>
+        <textarea id="inc-summary" class="form-control" rows="3" placeholder="Describe the error or blocker in detail..."></textarea>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button class="btn-secondary" onclick="closeIncidentModal()">Cancel</button>
+        <button class="btn-send" onclick="submitIncident()">Submit Ticket</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let activeBearerToken = null;
+    let currentSessionId = null;
+    let currentUserProfile = null;
+
+    function setAuthStatus(msg, isError = false) {
+      const el = document.getElementById("auth-status");
+      el.textContent = msg;
+      el.style.color = isError ? "var(--accent-rose)" : "var(--text-muted)";
+    }
+
+    async function apiRequest(path, method = "GET", body = null) {
+      const headers = { "Authorization": `Bearer ${activeBearerToken}` };
+      if (body) headers["Content-Type"] = "application/json";
+      const resp = await fetch(path, {
+        method: method,
+        headers: headers,
+        body: body ? JSON.stringify(body) : null
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.message || data.detail || `HTTP Error ${resp.status}`);
+      return data;
+    }
+
+    async function initializeSession(token) {
+      activeBearerToken = token;
+      setAuthStatus("Verifying identity with Google JWKS & Corporate Directory...");
+      try {
+        const landing = await apiRequest("/api/v1/landing", "POST");
+        currentUserProfile = landing;
+
+        document.getElementById("auth-view").style.display = "none";
+        document.getElementById("dashboard-view").style.display = "flex";
+
+        document.getElementById("user-display-name").textContent = landing.name;
+        document.getElementById("proactive-greeting-text").textContent = landing.proactive_greeting;
+
+        // Fetch Checklist
+        await refreshChecklist();
+
+        // Initial Assistant welcome message
+        appendChatMessage("assistant", `👋 Hello **${landing.name}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`, "Supervisor Agent", ["Check Timesheet", "View Pending Tasks", "Search Runbooks"]);
+
+      } catch (err) {
+        setAuthStatus(err.message, true);
+        activeBearerToken = null;
+      }
+    }
+
+    async function refreshChecklist() {
+      try {
+        const checklist = await apiRequest("/api/v1/onboarding/my-status");
+        const fill = document.getElementById("progress-bar-fill");
+        const pctEl = document.getElementById("progress-percentage");
+        const listEl = document.getElementById("task-list-container");
+
+        const pct = Math.round((checklist.completed_count / checklist.total_count) * 100) || 0;
+        fill.style.width = pct + "%";
+        pctEl.textContent = `${pct}% (${checklist.completed_count}/${checklist.total_count})`;
+
+        listEl.innerHTML = "";
+        checklist.tasks.forEach(t => {
+          const isDone = t.status === "COMPLETED";
+          const div = document.createElement("div");
+          div.className = `task-item ${isDone ? "completed" : ""}`;
+          div.innerHTML = `
+            <div>
+              <div style="font-weight: 600;">${t.title}</div>
+              <div style="color: var(--text-muted); font-size: 10px;">${t.category} • ${t.task_id}</div>
+            </div>
+            ${!isDone ? `<button class="task-btn-done" onclick="completeTask('${t.task_id}')">Done</button>` : `<span style="color: var(--accent-emerald);">✓</span>`}
+          `;
+          listEl.appendChild(div);
+        });
+      } catch (e) {
+        console.error("Checklist error:", e);
+      }
+    }
+
+    async function completeTask(taskId) {
+      try {
+        await apiRequest("/api/v1/onboarding/complete-task", "POST", { task_id: taskId });
+        await refreshChecklist();
+        appendChatMessage("assistant", `✅ Marked task **${taskId}** as completed! Your onboarding progress has been updated in BigQuery.`, "Onboarding Specialist");
+      } catch (err) {
+        alert("Could not complete task: " + err.message);
+      }
+    }
+
+    async function sendChatMessage() {
+      const input = document.getElementById("user-input-box");
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      input.value = "";
+      appendChatMessage("user", msg);
+
+      const btn = document.getElementById("send-button");
+      btn.disabled = true;
+
+      try {
+        const res = await apiRequest("/api/v1/chat", "POST", {
+          message: msg,
+          session_id: currentSessionId
+        });
+        currentSessionId = res.session_id;
+        appendChatMessage("assistant", res.response, res.agent_invoked, res.suggested_actions);
+      } catch (err) {
+        appendChatMessage("assistant", `⚠️ Error: ${err.message}`, "Security Guard");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function appendChatMessage(role, text, agentName = null, suggestions = []) {
+      const stream = document.getElementById("chat-stream");
+      const bubble = document.createElement("div");
+      bubble.className = `message-bubble ${role === "user" ? "user-message" : "assistant-message"}`;
+
+      let content = "";
+      if (role === "assistant" && agentName) {
+        content += `<div class="agent-badge-tag">⚡ ${agentName}</div><br>`;
+      }
+      content += text.replace(/\n/g, "<br>");
+
+      if (suggestions && suggestions.length > 0) {
+        content += `<div class="chips-container">` + 
+          suggestions.map(s => `<button class="chip-btn" onclick="quickPrompt('${s}')">${s}</button>`).join("") + 
+          `</div>`;
+      }
+
+      bubble.innerHTML = content;
+      stream.appendChild(bubble);
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    function quickPrompt(txt) {
+      document.getElementById("user-input-box").value = txt;
+      sendChatMessage();
+    }
+
+    async function checkTimesheet() {
+      try {
+        const ts = await apiRequest("/api/v1/timesheets/my-status");
+        appendChatMessage("assistant", `⏱️ **Timesheet Status**: Current status is **${ts.status}** for period ending ${ts.period_end}. Logged Hours: ${ts.hours_logged}.`, "Operations Action");
+      } catch (err) {
+        appendChatMessage("assistant", `⚠️ Timesheet lookup failed: ${err.message}`, "Operations Action");
+      }
+    }
+
+    function openIncidentModal() { document.getElementById("incident-modal").style.display = "grid"; }
+    function closeIncidentModal() { document.getElementById("incident-modal").style.display = "none"; }
+
+    async function submitIncident() {
+      const cat = document.getElementById("inc-category").value;
+      const summary = document.getElementById("inc-summary").value.trim();
+      if (!summary) return alert("Please provide an incident summary");
+
+      try {
+        const inc = await apiRequest("/api/v1/incidents/create", "POST", {
+          category: cat,
+          summary: summary,
+          severity: "MEDIUM",
+          confirmed: true
+        });
+        closeIncidentModal();
+        appendChatMessage("assistant", `🚨 **Incident Created**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}**. Status: ${inc.status}.`, "Operations Action");
+      } catch (e) {
+        alert("Incident creation error: " + e.message);
+      }
+    }
+
+    function signInWithMockToken(token) {
+      initializeSession(token);
+    }
+
+    function signOut() {
+      activeBearerToken = null;
+      currentSessionId = null;
+      document.getElementById("dashboard-view").style.display = "none";
+      document.getElementById("auth-view").style.display = "block";
+      setAuthStatus("Signed out. Select a sign-in method to continue.");
+      if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
+    }
+
+    // Google Identity Services (GIS) Live OAuth Initialization
+    window.addEventListener("load", () => {
+      if (window.google?.accounts?.id) {
+        google.accounts.id.initialize({
+          client_id: "__GOOGLE_CLIENT_ID__",
+          callback: (response) => {
+            // Live Google ID Token received directly from Google!
+            initializeSession(response.credential);
+          },
+          auto_select: false
+        });
+        google.accounts.id.renderButton(
+          document.getElementById("google-button"),
+          { theme: "filled_blue", size: "large", width: 360, text: "signin_with", shape: "rectangular" }
+        );
+      }
+    });
+  </script>
+</body>
+</html>
