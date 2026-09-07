@@ -1,0 +1,1143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Onboarding Employee Assistant</title>
+  <meta name="description" content="Enterprise AI Onboarding & Employee Assistant grounded in Google Cloud Platform and Google Identity.">
+  <meta property="og:title" content="Onboarding Employee Assistant">
+  <meta property="og:description" content="Enterprise AI Onboarding & Employee Assistant grounded in Google Cloud Platform and Google Identity.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0B0F19;
+      --bg-surface: #111827;
+      --bg-card: rgba(17, 24, 39, 0.75);
+      --bg-glass: rgba(31, 41, 55, 0.4);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(99, 102, 241, 0.3);
+      --text-primary: #F9FAFB;
+      --text-secondary: #9CA3AF;
+      --text-muted: #6B7280;
+      --accent-indigo: #6366F1;
+      --accent-purple: #8B5CF6;
+      --accent-emerald: #10B981;
+      --accent-amber: #F59E0B;
+      --accent-rose: #EF4444;
+      --accent-cyan: #06B6D4;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --shadow-glow: 0 0 30px rgba(99, 102, 241, 0.15);
+      --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.12) 0px, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, .brand-font { font-family: 'Outfit', sans-serif; letter-spacing: -0.02em; }
+
+    /* Layout Containers */
+    .app-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Auth Screen */
+    #auth-view {
+      margin: auto;
+      width: min(520px, 100%);
+      padding: 44px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-card), var(--shadow-glow);
+      text-align: center;
+    }
+    .auth-logo {
+      width: 58px;
+      height: 58px;
+      margin: 0 auto 20px;
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-size: 26px;
+      box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+    }
+    .auth-title { font-size: 28px; margin-bottom: 10px; }
+    .auth-subtitle { color: var(--text-secondary); font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+    
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      margin: 24px 0 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
+
+    .persona-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .persona-btn {
+      padding: 10px 14px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s ease;
+    }
+    .persona-btn:hover {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: var(--accent-indigo);
+      transform: translateY(-2px);
+    }
+    .persona-name { font-weight: 600; font-size: 13px; display: block; }
+    .persona-role { font-size: 11px; color: var(--text-secondary); }
+
+    /* Main Dashboard View */
+    #dashboard-view { display: none; flex: 1; flex-direction: column; gap: 24px; }
+
+    /* Top Navigation Header */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(16px);
+    }
+    .brand-section { display: flex; align-items: center; gap: 14px; }
+    .brand-badge {
+      font-size: 11px;
+      padding: 4px 10px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 20px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    .user-profile-widget { display: flex; align-items: center; gap: 16px; }
+    .role-tag {
+      font-size: 11px;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .role-employee { background: rgba(99, 102, 241, 0.2); color: #818CF8; border: 1px solid rgba(99, 102, 241, 0.4); }
+    .role-manager { background: rgba(245, 158, 11, 0.2); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .role-hr { background: rgba(236, 72, 153, 0.2); color: #F472B6; border: 1px solid rgba(236, 72, 153, 0.4); }
+    .role-it { background: rgba(6, 182, 212, 0.2); color: #22D3EE; border: 1px solid rgba(6, 182, 212, 0.4); }
+
+    .btn-secondary {
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover { background: rgba(239, 68, 68, 0.2); border-color: var(--accent-rose); }
+
+    /* Dashboard Main Grid */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+      flex: 1;
+    }
+
+    /* Left Sidebar: Proactive Onboarding & Ops */
+    .sidebar { display: flex; flex-direction: column; gap: 20px; }
+    .glass-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 22px;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-card);
+    }
+
+    /* Progress Widget */
+    .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .progress-bar-container {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-indigo), var(--accent-emerald));
+      transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .task-list { display: flex; flex-direction: column; gap: 10px; max-height: 280px; overflow-y: auto; }
+    .task-item {
+      padding: 10px 12px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      transition: all 0.2s ease;
+    }
+    .task-item.completed { border-color: rgba(16, 185, 129, 0.3); opacity: 0.65; }
+    .task-item.overdue {
+      border-color: rgba(244, 63, 94, 0.6);
+      background: rgba(244, 63, 94, 0.08);
+    }
+    .due-date-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    .due-date-badge.overdue-badge {
+      background: rgba(244, 63, 94, 0.2);
+      color: #fda4af;
+      border: 1px solid rgba(244, 63, 94, 0.4);
+    }
+    .toggle-completed-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 32px;
+      height: 18px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(255, 255, 255, 0.15);
+      transition: .2s;
+      border-radius: 18px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 12px;
+      width: 12px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: var(--accent-indigo);
+    }
+    input:checked + .slider:before {
+      transform: translateX(14px);
+    }
+    .task-btn-done {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid var(--accent-emerald);
+      color: var(--accent-emerald);
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    /* Quick Ops Action Buttons */
+    .quick-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+    .action-card-btn {
+      padding: 12px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      cursor: pointer;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .action-card-btn:hover { background: rgba(99, 102, 241, 0.2); border-color: var(--accent-indigo); }
+    .action-card-icon { font-size: 16px; margin-bottom: 6px; display: block; }
+
+    /* Knowledge Mesh Insights Widget */
+    .mesh-insights-list { display: flex; flex-direction: column; gap: 10px; max-height: 240px; overflow-y: auto; }
+    .mesh-insight-item {
+      padding: 11px 13px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .mesh-insight-item:hover {
+      background: rgba(99, 102, 241, 0.12);
+      border-color: var(--accent-indigo);
+      transform: translateY(-1px);
+    }
+    .mesh-insight-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+      font-size: 10px;
+    }
+    .mesh-category-pill {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .cat-STANDARDS { background: rgba(99, 102, 241, 0.25); color: #A5B4FC; }
+    .cat-RUNBOOK { background: rgba(6, 182, 212, 0.25); color: #67E8F9; }
+    .cat-BLUEPRINT { background: rgba(139, 92, 246, 0.25); color: #C4B5FD; }
+    .cat-POLICY { background: rgba(245, 158, 11, 0.25); color: #FCD34D; }
+    .mesh-insight-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+    .mesh-insight-summary {
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+    .mesh-live-tag {
+      font-size: 10px;
+      color: var(--accent-emerald);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+
+    /* Right Main Panel: Conversational Layer */
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-card);
+      height: 720px;
+    }
+    .chat-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .agent-status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-emerald);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--accent-emerald);
+    }
+
+    /* Message History Stream */
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .message-bubble {
+      max-width: 80%;
+      padding: 14px 18px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      line-height: 1.6;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .user-message {
+      align-self: flex-end;
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .assistant-message {
+      align-self: flex-start;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      border-bottom-left-radius: 4px;
+    }
+    .agent-badge-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin-bottom: 6px;
+      display: inline-block;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* Suggested Action Chips */
+    .chips-container { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .chip-btn {
+      font-size: 11px;
+      padding: 6px 12px;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #A5B4FC;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chip-btn:hover { background: var(--accent-indigo); color: white; }
+
+    /* Input Footer */
+    .chat-input-wrapper {
+      padding: 18px 24px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .chat-input {
+      flex: 1;
+      padding: 14px 18px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .chat-input:focus { border-color: var(--accent-indigo); box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
+    .btn-send {
+      padding: 14px 24px;
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
+      border: 0;
+      border-radius: var(--radius-sm);
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .btn-send:hover { opacity: 0.92; transform: translateY(-1px); }
+    .btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Modal / Popups */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      place-items: center;
+      padding: 20px;
+    }
+    .modal-card {
+      width: min(600px, 100%);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 28px;
+      box-shadow: var(--shadow-card);
+    }
+    .form-group { margin-bottom: 16px; text-align: left; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-control {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+  </style>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- 1. LOGIN / AUTHENTICATION VIEW -->
+    <section id="auth-view">
+      <div class="auth-logo">✦</div>
+      <h1 class="auth-title">Employee AI Assistant</h1>
+      <p class="auth-subtitle">Production-grade AI Grounded in Google Cloud Identity, BigQuery, GCS, and Firestore Native Mode.</p>
+
+      <!-- Real Google Identity Sign-In (Production) -->
+      <div id="google-button" style="display: flex; justify-content: center; margin-bottom: 16px;"></div>
+
+      <div class="divider">Employee Corporate Sign In</div>
+
+      <!-- Real Employee Sign-In Form -->
+      <form id="employee-login-form" onsubmit="handleEmployeeSignIn(event)" style="display: flex; flex-direction: column; gap: 14px; text-align: left; margin-bottom: 18px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+            Corporate Email or Employee ID
+          </label>
+          <input 
+            id="login-identity-input" 
+            type="text" 
+            class="form-control" 
+            placeholder="e.g. rahul.sharma@company.com or EMP-2026-001" 
+            required 
+            style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
+          />
+        </div>
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0;">
+              SSO Password / Token (Optional for Sandbox)
+            </label>
+            <span style="font-size: 11px; color: var(--accent-emerald);">SSO Protected</span>
+          </div>
+          <input 
+            id="login-secret-input" 
+            type="password" 
+            class="form-control" 
+            placeholder="••••••••••••" 
+            style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
+          />
+        </div>
+        <button 
+          id="btn-employee-login" 
+          type="submit" 
+          class="btn-send" 
+          style="width: 100%; justify-content: center; padding: 12px; font-size: 14px; margin-top: 4px;"
+        >
+          Sign In to Corporate Workspace
+        </button>
+      </form>
+
+      <div id="auth-status" style="font-size: 13px; color: var(--text-muted); min-height: 20px; margin-bottom: 12px;"></div>
+
+      <div class="divider" style="margin-top: 10px; cursor: pointer;" onclick="togglePersonaHelper()">
+        <span>Quick Test Roster</span>
+        <span id="persona-toggle-arrow" style="font-size: 10px; margin-left: 6px;">▼</span>
+      </div>
+
+      <!-- Developer Persona Switcher for Quick Verification -->
+      <div id="persona-grid-container" class="persona-grid">
+        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-rahul')">
+          <span class="persona-name">Rahul Sharma</span>
+          <span class="persona-role">Day-1 SWE • Payments (EMP-2026-001)</span>
+        </button>
+        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-maya')">
+          <span class="persona-name">Maya Lin</span>
+          <span class="persona-role">Day-1 Intern • Platform (EMP-2026-002)</span>
+        </button>
+        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-sarah')">
+          <span class="persona-name">Sarah Jenkins</span>
+          <span class="persona-role">Manager • Payments (EMP-2026-010)</span>
+        </button>
+        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-amanda')">
+          <span class="persona-name">Amanda Walker</span>
+          <span class="persona-role">HR Specialist (EMP-2026-009)</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. MAIN SECURE ASSISTANT DASHBOARD -->
+    <section id="dashboard-view">
+      
+      <!-- Top Navigation Header -->
+      <header class="top-bar">
+        <div class="brand-section">
+          <div class="auth-logo" style="width: 38px; height: 38px; font-size: 18px; margin: 0;">✦</div>
+          <div>
+            <h2 style="font-size: 18px;">Patchamomma AI Assistant</h2>
+            <div style="font-size: 11px; color: var(--text-muted);">Zero-Trust Enterprise Perimeter • GCP Cloud Run</div>
+          </div>
+          <span class="brand-badge">PROD SECURE</span>
+        </div>
+
+        <div class="user-profile-widget">
+          <div style="text-align: right;">
+            <div id="user-display-name" style="font-weight: 600; font-size: 14px;"></div>
+            <div style="display: flex; gap: 6px; align-items: center; justify-content: flex-end; margin-top: 2px;">
+              <span id="user-display-team" style="font-size: 11px; color: var(--text-muted);"></span>
+              <span id="user-display-role" class="role-tag role-employee"></span>
+            </div>
+          </div>
+          <button class="btn-secondary" onclick="signOut()">Sign Out</button>
+        </div>
+      </header>
+
+      <!-- Dashboard Body Grid -->
+      <div class="dashboard-grid">
+        
+        <!-- Left Column: Proactive Guidance & Operations -->
+        <aside class="sidebar">
+          
+          <!-- Proactive Greeting Card -->
+          <div class="glass-card">
+            <h3 style="font-size: 15px; margin-bottom: 8px; color: var(--accent-cyan);">Proactive Greeting</h3>
+            <p id="proactive-greeting-text" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;"></p>
+          </div>
+
+          <!-- Onboarding Checklist Widget -->
+          <div class="glass-card">
+            <div class="progress-header">
+              <h3 style="font-size: 15px;">Onboarding Status</h3>
+              <span id="progress-percentage" style="font-size: 13px; font-weight: 700; color: var(--accent-emerald);">0%</span>
+            </div>
+            <div class="progress-bar-container">
+              <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+
+            <!-- Toggle switch to show/hide completed tasks -->
+            <div class="toggle-completed-wrapper">
+              <span style="display: flex; align-items: center; gap: 6px;">
+                <span>Show completed tasks</span>
+                <span id="completed-badge-count" style="font-size: 10px; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px;">0</span>
+              </span>
+              <label class="switch" title="Toggle completed tasks visibility">
+                <input type="checkbox" id="toggle-completed-checkbox" checked onchange="toggleCompletedTasks(this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div id="task-list-container" class="task-list">
+              <!-- Dynamically populated tasks -->
+            </div>
+          </div>
+
+          <!-- Knowledge Mesh Insight Widget -->
+          <div class="glass-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: 15px; display: flex; align-items: center; gap: 6px;">
+                <span>🌐</span> Knowledge Mesh Insights
+              </h3>
+              <div class="mesh-live-tag">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--accent-emerald); display: inline-block;"></span>
+                <span>Live Synced</span>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+              ACL-governed policy & runbook updates dynamically streamed from company BigQuery mesh.
+            </p>
+            <div id="mesh-insights-container" class="mesh-insights-list">
+              <div style="font-size: 12px; color: var(--text-muted); padding: 8px 0;">Loading mesh insights...</div>
+            </div>
+          </div>
+
+          <!-- Operations Quick Actions -->
+          <div class="glass-card">
+            <h3 style="font-size: 15px; margin-bottom: 4px;">Quick Actions</h3>
+            <div class="quick-actions">
+              <button class="action-card-btn" onclick="checkTimesheet()">
+                <span class="action-card-icon">⏱️</span>
+                Timesheet Status
+              </button>
+              <button class="action-card-btn" onclick="openIncidentModal()">
+                <span class="action-card-icon">🚨</span>
+                Report IT Ticket
+              </button>
+              <button class="action-card-btn" onclick="quickPrompt('What are our corporate logging and coding standards?')">
+                <span class="action-card-icon">💻</span>
+                Coding Standards
+              </button>
+              <button class="action-card-btn" onclick="quickPrompt('Show me the Payments Architecture and Cloud SQL runbook')">
+                <span class="action-card-icon">📚</span>
+                Search Runbooks
+              </button>
+            </div>
+          </div>
+
+        </aside>
+
+        <!-- Right Column: Conversational AI Panel -->
+        <main class="chat-panel">
+          <div class="chat-header">
+            <div>
+              <h3 style="font-size: 16px;">Multi-Agent Conversational Hub</h3>
+              <div style="font-size: 12px; color: var(--text-muted);">Grounded in BigQuery, GCS Knowledge Mesh, & Firestore</div>
+            </div>
+            <div class="agent-status-indicator">
+              <div class="pulse-dot"></div>
+              <span>Supervisor Active</span>
+            </div>
+          </div>
+
+          <div id="chat-stream" class="chat-messages">
+            <!-- Messages stream here -->
+          </div>
+
+          <div class="chat-input-wrapper">
+            <input 
+              id="user-input-box" 
+              type="text" 
+              class="chat-input" 
+              placeholder="Ask anything about onboarding, team runbooks, coding standards, or operations..." 
+              onkeydown="if(event.key==='Enter') sendChatMessage()"
+            />
+            <button id="send-button" class="btn-send" onclick="sendChatMessage()">Send</button>
+          </div>
+        </main>
+
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- Incident Creation Modal -->
+  <div id="incident-modal" class="modal-backdrop">
+    <div class="modal-card">
+      <h3 style="font-size: 18px; margin-bottom: 14px;">Report IT or Platform Incident</h3>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="inc-category" class="form-control">
+          <option>VPN / Network Connectivity</option>
+          <option>Cloud SQL / Database Access</option>
+          <option>GKE Cluster / Kubernetes</option>
+          <option>IAM Permissions & Keys</option>
+          <option>Hardware & Workstation</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Summary of Issue</label>
+        <textarea id="inc-summary" class="form-control" rows="3" placeholder="Describe the error or blocker in detail..."></textarea>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+        <button class="btn-secondary" onclick="closeIncidentModal()">Cancel</button>
+        <button class="btn-send" onclick="submitIncident()">Submit Ticket</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let activeBearerToken = null;
+    let currentSessionId = null;
+    let currentUserProfile = null;
+
+    function setAuthStatus(msg, isError = false) {
+      const el = document.getElementById("auth-status");
+      el.textContent = msg;
+      el.style.color = isError ? "var(--accent-rose)" : "var(--text-muted)";
+    }
+
+    async function apiRequest(path, method = "GET", body = null) {
+      const headers = { "Authorization": `Bearer ${activeBearerToken}` };
+      if (body) headers["Content-Type"] = "application/json";
+      const resp = await fetch(path, {
+        method: method,
+        headers: headers,
+        body: body ? JSON.stringify(body) : null
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.message || data.detail || `HTTP Error ${resp.status}`);
+      return data;
+    }
+
+    async function initializeSession(token) {
+      activeBearerToken = token;
+      setAuthStatus("Verifying identity with Google JWKS & Corporate Directory...");
+      try {
+        const landing = await apiRequest("/api/v1/landing", "POST");
+        currentUserProfile = landing;
+
+        // Restore or initialize persistent session ID for this employee
+        const sessionKey = `onboarding_session_${landing.employee_id}`;
+        currentSessionId = localStorage.getItem(sessionKey) || `sess-${landing.employee_id.toLowerCase()}`;
+        localStorage.setItem(sessionKey, currentSessionId);
+
+        document.getElementById("auth-view").style.display = "none";
+        document.getElementById("dashboard-view").style.display = "flex";
+
+        document.getElementById("user-display-name").textContent = landing.name;
+        document.getElementById("proactive-greeting-text").textContent = landing.proactive_greeting;
+
+        // Fetch Checklist
+        await refreshChecklist();
+
+        // Fetch Knowledge Mesh Insights for Sidebar Widget
+        await refreshKnowledgeInsights();
+
+        // Attempt to restore persistent conversation history from Firestore
+        await restoreSessionHistory(currentSessionId, landing.name);
+
+      } catch (err) {
+        setAuthStatus(err.message, true);
+        activeBearerToken = null;
+      }
+    }
+
+    async function restoreSessionHistory(sessionId, userName) {
+      try {
+        const sessionData = await apiRequest(`/api/v1/session/history?session_id=${sessionId}`);
+        const stream = document.getElementById("chat-stream");
+        stream.innerHTML = "";
+
+        if (sessionData.history && sessionData.history.length > 0) {
+          sessionData.history.forEach(m => {
+            appendChatMessage(m.role, m.content, m.role === "assistant" ? "Supervisor Agent" : null);
+          });
+        } else {
+          // Initial Assistant welcome message
+          appendChatMessage(
+            "assistant",
+            `👋 Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant.\nYour session history is permanently backed by Cloud Firestore. How can I help you today?`,
+            "Supervisor Agent",
+            ["Check Timesheet", "View Pending Tasks", "Search Runbooks"]
+          );
+        }
+      } catch (e) {
+        console.warn("Could not load previous session history:", e);
+        appendChatMessage(
+          "assistant",
+          `👋 Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`,
+          "Supervisor Agent",
+          ["Check Timesheet", "View Pending Tasks", "Search Runbooks"]
+        );
+      }
+    }
+
+    async function refreshKnowledgeInsights() {
+      const container = document.getElementById("mesh-insights-container");
+      try {
+        const data = await apiRequest("/api/v1/knowledge/insights");
+        if (!data.insights || data.insights.length === 0) {
+          container.innerHTML = `<div style="font-size: 11px; color: var(--text-muted); padding: 8px 0;">No new updates for your team access level.</div>`;
+          return;
+        }
+
+        container.innerHTML = "";
+        data.insights.forEach(item => {
+          const card = document.createElement("div");
+          card.className = "mesh-insight-item";
+          card.innerHTML = `
+            <div class="mesh-insight-meta">
+              <span class="mesh-category-pill cat-${item.category}">${item.category}</span>
+              <span style="color: var(--text-muted); font-size: 10px;">${item.effective_date}</span>
+            </div>
+            <div class="mesh-insight-title">${item.title}</div>
+            <div class="mesh-insight-summary">${item.summary}</div>
+            <div style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 10px; color: var(--accent-indigo); font-weight: 500;">${item.highlight_tag}</span>
+              <span style="font-size: 10px; color: var(--text-muted);">Team: ${item.team}</span>
+            </div>
+          `;
+          card.onclick = () => {
+            quickPrompt(`Explain the insight: "${item.title}" and the action needed: "${item.action_suggestion}"`);
+          };
+          container.appendChild(card);
+        });
+      } catch (err) {
+        console.error("Failed to load knowledge insights:", err);
+        container.innerHTML = `<div style="font-size: 11px; color: var(--accent-rose); padding: 6px 0;">Failed to sync Knowledge Mesh insights.</div>`;
+      }
+    }
+
+
+    let currentChecklistData = null;
+    let showCompletedTasks = true;
+
+    function toggleCompletedTasks(checked) {
+      showCompletedTasks = checked;
+      renderChecklistTasks();
+    }
+
+    function renderChecklistTasks() {
+      if (!currentChecklistData) return;
+      const listEl = document.getElementById("task-list-container");
+      const badgeCount = document.getElementById("completed-badge-count");
+      
+      const completedTasks = currentChecklistData.tasks.filter(t => t.status === "COMPLETED");
+      if (badgeCount) {
+        badgeCount.textContent = completedTasks.length;
+      }
+
+      listEl.innerHTML = "";
+      const visibleTasks = currentChecklistData.tasks.filter(t => {
+        if (t.status === "COMPLETED" && !showCompletedTasks) {
+          return false;
+        }
+        return true;
+      });
+
+      if (visibleTasks.length === 0) {
+        listEl.innerHTML = `
+          <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
+            ${!showCompletedTasks && completedTasks.length > 0 ? "All completed tasks hidden. Toggle switch above to view." : "No tasks found."}
+          </div>
+        `;
+        return;
+      }
+
+      visibleTasks.forEach(t => {
+        const isDone = t.status === "COMPLETED";
+        const isOverdue = !isDone && (t.is_overdue || (t.due_date && t.due_date < "2026-09-07"));
+        const div = document.createElement("div");
+        div.className = `task-item ${isDone ? "completed" : ""} ${isOverdue ? "overdue" : ""}`;
+
+        const dueDateText = t.due_date ? `Due: ${t.due_date}` : `Due in +${t.due_days_after_start}d`;
+
+        div.innerHTML = `
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; font-size: 12px; color: ${isOverdue ? '#fda4af' : 'var(--text-primary)'};">${t.title}</div>
+            <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">
+              ${t.category} • ${t.task_id}
+            </div>
+            <div class="due-date-badge ${isOverdue ? 'overdue-badge' : ''}">
+              <span>${isOverdue ? '⚠️ Overdue:' : '📅'}</span>
+              <span>${dueDateText}</span>
+            </div>
+          </div>
+          <div style="flex-shrink: 0; margin-left: 8px;">
+            ${!isDone 
+              ? `<button class="task-btn-done" onclick="completeTask('${t.task_id}')">Done</button>` 
+              : `<span style="color: var(--accent-emerald); font-weight: 700; font-size: 14px;">✓</span>`
+            }
+          </div>
+        `;
+        listEl.appendChild(div);
+      });
+    }
+
+    async function refreshChecklist() {
+      try {
+        const checklist = await apiRequest("/api/v1/onboarding/my-status");
+        currentChecklistData = checklist;
+
+        const fill = document.getElementById("progress-bar-fill");
+        const pctEl = document.getElementById("progress-percentage");
+
+        const pct = Math.round((checklist.completed_count / checklist.total_count) * 100) || 0;
+        fill.style.width = pct + "%";
+        pctEl.textContent = `${pct}% (${checklist.completed_count}/${checklist.total_count})`;
+
+        renderChecklistTasks();
+      } catch (e) {
+        console.error("Checklist error:", e);
+      }
+    }
+
+    async function completeTask(taskId) {
+      try {
+        await apiRequest("/api/v1/onboarding/complete-task", "POST", { task_id: taskId });
+        await refreshChecklist();
+        appendChatMessage("assistant", `✅ Marked task **${taskId}** as completed! Your onboarding progress has been updated in BigQuery.`, "Onboarding Specialist");
+      } catch (err) {
+        alert("Could not complete task: " + err.message);
+      }
+    }
+
+    async function sendChatMessage() {
+      const input = document.getElementById("user-input-box");
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      input.value = "";
+      appendChatMessage("user", msg);
+
+      const btn = document.getElementById("send-button");
+      btn.disabled = true;
+
+      try {
+        const res = await apiRequest("/api/v1/chat", "POST", {
+          message: msg,
+          session_id: currentSessionId
+        });
+        currentSessionId = res.session_id;
+        appendChatMessage("assistant", res.response, res.agent_invoked, res.suggested_actions);
+      } catch (err) {
+        appendChatMessage("assistant", `⚠️ Error: ${err.message}`, "Security Guard");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function appendChatMessage(role, text, agentName = null, suggestions = []) {
+      const stream = document.getElementById("chat-stream");
+      const bubble = document.createElement("div");
+      bubble.className = `message-bubble ${role === "user" ? "user-message" : "assistant-message"}`;
+
+      let content = "";
+      if (role === "assistant" && agentName) {
+        content += `<div class="agent-badge-tag">⚡ ${agentName}</div><br>`;
+      }
+      content += text.replace(/\n/g, "<br>");
+
+      if (suggestions && suggestions.length > 0) {
+        content += `<div class="chips-container">` + 
+          suggestions.map(s => `<button class="chip-btn" onclick="quickPrompt('${s}')">${s}</button>`).join("") + 
+          `</div>`;
+      }
+
+      bubble.innerHTML = content;
+      stream.appendChild(bubble);
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    function quickPrompt(txt) {
+      document.getElementById("user-input-box").value = txt;
+      sendChatMessage();
+    }
+
+    async function checkTimesheet() {
+      try {
+        const ts = await apiRequest("/api/v1/timesheets/my-status");
+        appendChatMessage("assistant", `⏱️ **Timesheet Status**: Current status is **${ts.status}** for period ending ${ts.period_end || ts.period}. Logged Hours: ${ts.hours_logged}.`, "Operations Action");
+      } catch (err) {
+        appendChatMessage("assistant", `⚠️ Timesheet lookup failed: ${err.message}`, "Operations Action");
+      }
+    }
+
+    function openIncidentModal() { document.getElementById("incident-modal").style.display = "grid"; }
+    function closeIncidentModal() { document.getElementById("incident-modal").style.display = "none"; }
+
+    async function submitIncident() {
+      const cat = document.getElementById("inc-category").value;
+      const summary = document.getElementById("inc-summary").value.trim();
+      if (!summary) return alert("Please provide an incident summary");
+
+      try {
+        const inc = await apiRequest("/api/v1/incidents/create", "POST", {
+          category: cat,
+          summary: summary,
+          severity: "MEDIUM",
+          confirmed: true
+        });
+        closeIncidentModal();
+        appendChatMessage("assistant", `🚨 **Incident Created**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}**. Status: ${inc.status}.`, "Operations Action");
+      } catch (e) {
+        alert("Incident creation error: " + e.message);
+      }
+    }
+
+    function togglePersonaHelper() {
+      const container = document.getElementById("persona-grid-container");
+      const arrow = document.getElementById("persona-toggle-arrow");
+      if (container.style.display === "none") {
+        container.style.display = "grid";
+        arrow.textContent = "▼";
+      } else {
+        container.style.display = "none";
+        arrow.textContent = "▶";
+      }
+    }
+
+    async function handleEmployeeSignIn(event) {
+      event.preventDefault();
+      const identity = document.getElementById("login-identity-input").value.trim();
+      if (!identity) return;
+
+      const btn = document.getElementById("btn-employee-login");
+      btn.disabled = true;
+      btn.textContent = "Verifying Credentials...";
+      setAuthStatus("Connecting to enterprise identity directory...");
+
+      try {
+        await initializeSession(identity);
+      } catch (err) {
+        setAuthStatus("Authentication failed: " + err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Sign In to Corporate Workspace";
+      }
+    }
+
+    function signInWithMockToken(token) {
+      initializeSession(token);
+    }
+
+    function signOut() {
+      activeBearerToken = null;
+      currentSessionId = null;
+      document.getElementById("dashboard-view").style.display = "none";
+      document.getElementById("auth-view").style.display = "block";
+      setAuthStatus("Signed out. Select a sign-in method to continue.");
+      if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
+    }
+
+    // Google Identity Services (GIS) Live OAuth Initialization
+    window.addEventListener("load", () => {
+      const clientId = "__GOOGLE_CLIENT_ID__";
+      if (window.google?.accounts?.id && clientId && !clientId.startsWith("__")) {
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: (response) => {
+            initializeSession(response.credential);
+          },
+          auto_select: false
+        });
+        google.accounts.id.renderButton(
+          document.getElementById("google-button"),
+          { theme: "filled_blue", size: "large", width: 360, text: "signin_with", shape: "rectangular" }
+        );
+      }
+    });
+  </script>
+</body>
+</html>

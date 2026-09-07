@@ -1,0 +1,27 @@
+{
+  "name": "onboarding-employee-assistant",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Secure AI-Powered Onboarding & Employee Assistant Framework",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs"
+  },
+  "dependencies": {
+    "@google/genai": "latest",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "firebase": "^12.18.0",
+    "firebase-admin": "^14.3.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.7",
+    "esbuild": "^0.24.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

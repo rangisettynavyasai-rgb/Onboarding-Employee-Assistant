@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "session": {
+      "description": "User conversational chat sessions and interactions",
+      "fields": {
+        "session_id": "string",
+        "employee_id": "string",
+        "created_at": "string",
+        "last_accessed_at": "string",
+        "history": "array"
+      }
+    },
+    "knowledgeInsight": {
+      "description": "Recent knowledge mesh documentation and policy updates",
+      "fields": {
+        "insight_id": "string",
+        "title": "string",
+        "team": "string",
+        "access_level": "string",
+        "summary": "string",
+        "doc_type": "string",
+        "gcs_uri": "string",
+        "updated_at": "string"
+      }
+    }
+  },
+  "firestore": {
+    "/sessions/{sessionId}": {
+      "entity": "session",
+      "indexes": []
+    },
+    "/knowledge_insights/{insightId}": {
+      "entity": "knowledgeInsight",
+      "indexes": []
+    }
+  }
+}
