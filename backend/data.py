@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Patchamomma 2026: Comprehensive In-Memory Datasets & BigQuery Seed Catalog
-Synchronized with tables in patchamomma-505416.employee_ai
+Company AI Assistant: Comprehensive In-Memory Datasets & BigQuery Seed Catalog
+Synchronized with tables in company-internal.employee_ai
 """
-from typing import Dict, List
+from typing import Dict, List, Any, Optional
 from backend.models import (
     EmployeeRecord, AuthorizationRole, OnboardingTask, TaskStatus,
     KnowledgeAsset, KnowledgeChunk, TimesheetRecord, TimesheetStatus,
@@ -214,7 +214,7 @@ ONBOARDING_TASKS: Dict[str, List[OnboardingTask]] = {
             status=TaskStatus.PENDING,
             due_days_after_start=2,
             category="Development Setup",
-            action_link="gs://patchamomma-knowledge-mesh/runbooks/dev_environment_setup.md",
+            action_link="gs://company-knowledge-mesh/runbooks/dev_environment_setup.md",
         ),
         OnboardingTask(
             task_id="TASK-001-BUDDY",
@@ -252,7 +252,7 @@ ONBOARDING_TASKS: Dict[str, List[OnboardingTask]] = {
             status=TaskStatus.PENDING,
             due_days_after_start=2,
             category="Infrastructure Setup",
-            action_link="gs://patchamomma-knowledge-mesh/runbooks/kubernetes_cluster_triage.md",
+            action_link="gs://company-knowledge-mesh/runbooks/kubernetes_cluster_triage.md",
         ),
         OnboardingTask(
             task_id="TASK-002-BUDDY",
@@ -307,20 +307,78 @@ ONBOARDING_TASKS: Dict[str, List[OnboardingTask]] = {
 KNOWLEDGE_CATALOG: List[KnowledgeAsset] = [
     KnowledgeAsset(
         document_id="DOC-ALL-001",
-        title="Patchamomma 2026 Code of Conduct & Working Hours",
-        source="Notion Corporate Policies",
-        gcs_uri="gs://patchamomma-knowledge-mesh/company/code_of_conduct_2026.md",
+        title="Company Code of Conduct, Workplace Guidelines & Hours",
+        source="Corporate People Operations Policies",
+        gcs_uri="gs://company-knowledge-mesh/company/code_of_conduct_2026.md",
         team="ALL",
         access_level="employee",
         document_type="Policy",
-        owner="People Ops Guild",
-        description="Comprehensive workplace guidelines, core hours, and timesheet submission policies.",
+        owner="People Operations Team",
+        description="Comprehensive workplace guidelines, core hours, timesheet submission policies, and cultural values.",
         chunks=[
             KnowledgeChunk(
                 chunk_id="CHK-ALL-001-1",
                 document_id="DOC-ALL-001",
                 chunk_index=0,
-                content="# Patchamomma 2026 Code of Conduct\nWe prioritize psychological safety, radical candor with empathy, and customer obsession.\nWorking hours are core-flexible (10am - 4pm local). Timesheets must be finalized by Friday 5pm.",
+                content=(
+                    "# Company Code of Conduct & Workplace Standards\n\n"
+                    "## Core Values\n"
+                    "1. **Psychological Safety & Respect**: We foster an inclusive environment where questions are celebrated and failure is treated as a learning opportunity.\n"
+                    "2. **Customer & Team Obsession**: Deliver high-reliability services that simplify work for teammates and external customers.\n"
+                    "3. **Radical Candor with Empathy**: Direct, constructive feedback delivered with genuine care.\n\n"
+                    "## Working Hours & Flexibility\n"
+                    "- **Core Hours**: 10:00 AM – 4:00 PM in your local time zone for synchronous meetings and team alignment.\n"
+                    "- **Flexible Bands**: Remaining hours can be structured flexibly around personal productivity and time zone needs.\n\n"
+                    "## Weekly Timesheet Policy\n"
+                    "- All hourly and salaried employees must review and finalize their weekly timesheet by **Friday at 5:00 PM local time**.\n"
+                    "- Timesheets ensure timely payroll processing, project cost tracking, and compliance.\n"
+                    "- Direct questions to People Operations at `people-ops@company.com`."
+                ),
+                team="ALL",
+                access_level="employee",
+            )
+        ],
+    ),
+    KnowledgeAsset(
+        document_id="DOC-ALL-002",
+        title="Engineering Coding & Structured Logging Standards",
+        source="Engineering Guild Architecture Wiki",
+        gcs_uri="gs://company-knowledge-mesh/engineering/logging_standards_2026.md",
+        team="ALL",
+        access_level="employee",
+        document_type="Technical Standard",
+        owner="Engineering Architecture Guild",
+        description="Mandatory structured JSON logging (RFC-5424), Conventional Commits, and CI pipeline quality gates.",
+        chunks=[
+            KnowledgeChunk(
+                chunk_id="CHK-ALL-002-1",
+                document_id="DOC-ALL-002",
+                chunk_index=0,
+                content=(
+                    "# Engineering Coding & Structured Logging Standards\n\n"
+                    "## 1. Zero Raw Print Policy\n"
+                    "Never commit raw `print(...)` in Python or `console.log(...)` in TypeScript to production microservices. "
+                    "Unstructured log lines break downstream ingestion into Google Cloud Logging and BigQuery telemetry pipelines.\n\n"
+                    "## 2. Standard Structured JSON Logging Format (RFC-5424)\n"
+                    "All application logs must be serialized as JSON objects with the following schema:\n"
+                    "```python\n"
+                    "import logging, json\n"
+                    "logger = logging.getLogger('payments-service')\n"
+                    "logger.info(json.dumps({\n"
+                    "    'event': 'PAYMENT_TRANSACTION_INITIATED',\n"
+                    "    'trace_id': trace_id,\n"
+                    "    'user_id': user_id,\n"
+                    "    'amount_cents': 2500,\n"
+                    "    'status': 'SUCCESS'\n"
+                    "}))\n"
+                    "```\n\n"
+                    "## 3. Database Security & Credentials\n"
+                    "- **No hardcoded credentials**: Never store database passwords or service account keys in repositories.\n"
+                    "- **Cloud SQL Auth Proxy**: Connect to Cloud SQL via `127.0.0.1:5432` using IAM database authentication and Google Cloud Secret Manager.\n\n"
+                    "## 4. Git & Code Review Rules\n"
+                    "- Conventional Commits required: `feat(scope): message`, `fix(scope): message`.\n"
+                    "- Every PR requires at least 1 peer approval and passing automated CI checks."
+                ),
                 team="ALL",
                 access_level="employee",
             )
@@ -330,7 +388,7 @@ KNOWLEDGE_CATALOG: List[KnowledgeAsset] = [
         document_id="DOC-PAY-001",
         title="Payments Event Ledger & Idempotency Architecture",
         source="GitHub engineering/payments-core",
-        gcs_uri="gs://patchamomma-knowledge-mesh/payments/architecture_overview_2026.md",
+        gcs_uri="gs://company-knowledge-mesh/payments/architecture_overview_2026.md",
         team="Payments",
         access_level="employee",
         document_type="Technical Blueprint",
@@ -341,7 +399,19 @@ KNOWLEDGE_CATALOG: List[KnowledgeAsset] = [
                 chunk_id="CHK-PAY-001-1",
                 document_id="DOC-PAY-001",
                 chunk_index=0,
-                content="# Payments Architecture Blueprint\nEvery transaction creates an immutable event in the Double-Entry Ledger on Cloud SQL PostgreSQL.\nIdempotency-Key headers are strictly verified via Redis KV cache (TTL 24 hours).",
+                content=(
+                    "# Payments Architecture Blueprint: Event Ledger & Idempotency\n\n"
+                    "## Overview\n"
+                    "The Payments Core service handles credit, debit, and settlement transactions across global payment gateways. "
+                    "All accounting operations follow an immutable double-entry bookkeeping model.\n\n"
+                    "## 1. Idempotency Key Specification\n"
+                    "- Every mutative endpoint (`POST /v1/charges`, `POST /v1/transfers`) requires an `Idempotency-Key: <UUID-v4>` header.\n"
+                    "- Redis KV cluster caches request payloads and status codes for a **24-hour TTL** window.\n"
+                    "- In the event of network retries, duplicate requests return the cached response without re-executing funds movement.\n\n"
+                    "## 2. Cloud SQL Persistence & BigQuery Streaming\n"
+                    "- Primary datastore: Cloud SQL PostgreSQL instance running with automated failover.\n"
+                    "- Change Data Capture (CDC): Events are streamed in real time to BigQuery `payments_events_ledger` table for audit reconciliation."
+                ),
                 team="Payments",
                 access_level="employee",
             )
@@ -349,20 +419,32 @@ KNOWLEDGE_CATALOG: List[KnowledgeAsset] = [
     ),
     KnowledgeAsset(
         document_id="DOC-PLT-001",
-        title="Kubernetes Staging Cluster Triage & Service Mesh",
-        source="Confluence Infrastructure",
-        gcs_uri="gs://patchamomma-knowledge-mesh/platform/k8s_triage_guide.md",
+        title="Kubernetes Staging Cluster Triage & Service Mesh Runbook",
+        source="Confluence Platform Runbooks",
+        gcs_uri="gs://company-knowledge-mesh/platform/k8s_triage_guide.md",
         team="Platform",
         access_level="employee",
         document_type="Runbook",
         owner="Platform Reliability Team",
-        description="GKE cluster incident response, Istio routing rules, and Secret Manager rotation procedures.",
+        description="GKE cluster incident response, Istio routing rules, and Cloud SQL Auth Proxy sidecar rotation procedures.",
         chunks=[
             KnowledgeChunk(
                 chunk_id="CHK-PLT-001-1",
                 document_id="DOC-PLT-001",
                 chunk_index=0,
-                content="# Platform Runbook: GKE Cluster Triage\nIn case of 5xx spikes on ingress: Check Istio envoy sidecar logs using `kubectl logs -l app=payment-gateway -c istio-proxy`.\nEscalate to #platform-incident on Slack.",
+                content=(
+                    "# Platform Runbook: Kubernetes Staging Cluster Triage\n\n"
+                    "## Common Alert: 5xx Spike on Ingress\n"
+                    "1. **Check Gateway Logs**:\n"
+                    "   `kubectl logs -l app=payment-gateway -c istio-proxy -n staging --tail=100`\n"
+                    "2. **Verify Cloud SQL Proxy Sidecar**:\n"
+                    "   Check pod sidecar status: `kubectl get pods -n staging -o wide`\n"
+                    "   Inspect proxy logs: `kubectl logs <pod-name> -c cloud-sql-proxy -n staging`\n"
+                    "3. **Restarting Unhealthy Pods**:\n"
+                    "   `kubectl rollout restart deployment/payment-gateway -n staging`\n"
+                    "4. **Escalation**:\n"
+                    "   If latency exceeds 500ms or error rate > 1%, page the on-call engineer via `#platform-incidents`."
+                ),
                 team="Platform",
                 access_level="employee",
             )
@@ -372,7 +454,7 @@ KNOWLEDGE_CATALOG: List[KnowledgeAsset] = [
         document_id="DOC-MGR-001",
         title="Performance Management & Compensation Review Guidelines",
         source="HR Internal Shared Drive",
-        gcs_uri="gs://patchamomma-knowledge-mesh/hr/compensation_guidelines_2026.pdf",
+        gcs_uri="gs://company-knowledge-mesh/hr/compensation_guidelines_2026.pdf",
         team="ALL",
         access_level="manager",
         document_type="Management Guideline",
@@ -383,7 +465,20 @@ KNOWLEDGE_CATALOG: List[KnowledgeAsset] = [
                 chunk_id="CHK-MGR-001-1",
                 document_id="DOC-MGR-001",
                 chunk_index=0,
-                content="# Managerial Compensation & Performance Guidelines\nConfidential to Managers and HR: Annual review cycles occur in October.\nPromotion packages require 2 peer reviews and director approval.",
+                content=(
+                    "# Managerial Compensation & Performance Guidelines\n\n"
+                    "*(Confidential - Restricted to Managers and HR)*\n\n"
+                    "## 1. Annual Calibration Timeline\n"
+                    "- Self & Peer Reviews: Open September 15 – October 5.\n"
+                    "- Manager Assessment & Rating Submission: Due October 15.\n"
+                    "- Department Calibration Sessions: October 20 – October 28.\n"
+                    "- Merit & Equity Statements Issued: November 15.\n\n"
+                    "## 2. Rating Rubric\n"
+                    "- Level 1: Developing / Needs Coaching\n"
+                    "- Level 2: Fully Meets Role Expectations\n"
+                    "- Level 3: Frequently Exceeds Expectations / Force Multiplier\n"
+                    "- Promotion packages require 2 peer endorsements, manager rationale, and director signoff."
+                ),
                 team="ALL",
                 access_level="manager",
             )
@@ -501,6 +596,7 @@ TEAM_DIRECTORY: Dict[str, Dict[str, Any]] = {
 KNOWLEDGE_INSIGHTS: List[Dict[str, Any]] = [
     {
         "insight_id": "INSIGHT-2026-001",
+        "doc_id": "DOC-ALL-002",
         "title": "Mandatory Structured JSON Logging v2.4 Enforced",
         "category": "STANDARDS",
         "summary": "All microservices must emit logs formatted in RFC-5424 JSON with trace context. Naked print() statements will fail CI pipeline checks.",
@@ -508,11 +604,31 @@ KNOWLEDGE_INSIGHTS: List[Dict[str, Any]] = [
         "access_level": "employee",
         "effective_date": "2026-09-01",
         "highlight_tag": "Active CI Gate",
-        "gcs_uri": "gs://patchamomma-knowledge-mesh/engineering/logging_standards_2026.md",
+        "gcs_uri": "gs://company-knowledge-mesh/engineering/logging_standards_2026.md",
         "action_suggestion": "Check your repository logging wrapper against Code Mentor standards.",
+        "full_content": (
+            "### Mandatory Structured JSON Logging Standards (RFC-5424)\n\n"
+            "**Policy Status**: Active Enforcement across all microservices.\n\n"
+            "**Key Requirements**:\n"
+            "- Never commit raw `print(...)` in Python or `console.log(...)` in TypeScript.\n"
+            "- Structured logs must include `event`, `trace_id`, `user_id`, and `severity`.\n"
+            "- Trace context correlates logs directly with Google Cloud Trace and BigQuery telemetry.\n\n"
+            "**Example Implementation (Python)**:\n"
+            "```python\n"
+            "import logging, json\n"
+            "logger = logging.getLogger('payments-service')\n"
+            "logger.info(json.dumps({\n"
+            "    'event': 'PAYMENT_PROCESSED',\n"
+            "    'trace_id': trace_id,\n"
+            "    'amount_cents': 2500,\n"
+            "    'status': 'SUCCESS'\n"
+            "}))\n"
+            "```"
+        )
     },
     {
         "insight_id": "INSIGHT-2026-002",
+        "doc_id": "DOC-PLT-001",
         "title": "Cloud SQL Auth Proxy v2.1 Sidecar Requirement",
         "category": "RUNBOOK",
         "summary": "Direct PostgreSQL connections from GKE pods without the Cloud SQL Auth Proxy sidecar are deprecated as of Q3. Workload Identity is now required.",
@@ -520,11 +636,22 @@ KNOWLEDGE_INSIGHTS: List[Dict[str, Any]] = [
         "access_level": "employee",
         "effective_date": "2026-08-28",
         "highlight_tag": "Infrastructure Notice",
-        "gcs_uri": "gs://patchamomma-knowledge-mesh/platform/kubernetes_cluster_triage.md",
+        "gcs_uri": "gs://company-knowledge-mesh/platform/kubernetes_cluster_triage.md",
         "action_suggestion": "Review the Kubernetes cluster triage and proxy sidecar runbook.",
+        "full_content": (
+            "### Cloud SQL Auth Proxy Sidecar Configuration & Triage\n\n"
+            "**Scope**: All GKE workloads connecting to Cloud SQL PostgreSQL.\n\n"
+            "**Guidelines**:\n"
+            "1. **Local Address**: Pods must route database queries to `127.0.0.1:5432`.\n"
+            "2. **Workload Identity**: Authenticates pod service account with Google Cloud IAM without hardcoded passwords.\n"
+            "3. **Triage Command**:\n"
+            "   `kubectl logs <pod-name> -c cloud-sql-proxy -n staging`\n"
+            "4. **Emergency Escalation**: Page on-call infrastructure engineers on `#help-infrastructure`."
+        )
     },
     {
         "insight_id": "INSIGHT-2026-003",
+        "doc_id": "DOC-PAY-001",
         "title": "Double-Entry Ledger Idempotency Key Specification",
         "category": "BLUEPRINT",
         "summary": "Payments Guild has updated the idempotency window to 24 hours on Redis KV cluster with automated BigQuery reconciliation streaming.",
@@ -532,11 +659,21 @@ KNOWLEDGE_INSIGHTS: List[Dict[str, Any]] = [
         "access_level": "employee",
         "effective_date": "2026-09-04",
         "highlight_tag": "Payments Guild",
-        "gcs_uri": "gs://patchamomma-knowledge-mesh/payments/architecture_overview_2026.md",
+        "gcs_uri": "gs://company-knowledge-mesh/payments/architecture_overview_2026.md",
         "action_suggestion": "Inspect the Idempotency-Key headers in payment request routes.",
+        "full_content": (
+            "### Double-Entry Ledger & Idempotency Header Architecture\n\n"
+            "**Overview**: High-throughput transaction processing for payments.\n\n"
+            "**Protocol Rules**:\n"
+            "- Every mutative endpoint requires an `Idempotency-Key: <UUID-v4>` header.\n"
+            "- Redis cluster enforces a strict 24-hour cache TTL to avoid double-charging.\n"
+            "- Transactions persist immutably to Cloud SQL PostgreSQL and stream via CDC to BigQuery audit tables.\n"
+            "- Retry requests with the same key safely return the previously computed receipt."
+        )
     },
     {
         "insight_id": "INSIGHT-2026-004",
+        "doc_id": "DOC-ALL-001",
         "title": "Core Flexible Working Hours & Timesheet Finalization",
         "category": "POLICY",
         "summary": "Core collaboration hours are 10:00 AM - 4:00 PM local time. All weekly timesheets must be submitted by Friday 5:00 PM to ensure payroll accuracy.",
@@ -544,11 +681,22 @@ KNOWLEDGE_INSIGHTS: List[Dict[str, Any]] = [
         "access_level": "employee",
         "effective_date": "2026-09-01",
         "highlight_tag": "People Ops Update",
-        "gcs_uri": "gs://patchamomma-knowledge-mesh/company/code_of_conduct_2026.md",
+        "gcs_uri": "gs://company-knowledge-mesh/company/code_of_conduct_2026.md",
         "action_suggestion": "Verify your current weekly timesheet status before end-of-week.",
+        "full_content": (
+            "### Workplace Flexibility & Weekly Timesheet Submission\n\n"
+            "**Working Hours Guideline**:\n"
+            "- Core collaboration window: 10:00 AM – 4:00 PM in your regional time zone.\n"
+            "- Team members can arrange flexible schedules outside core hours in coordination with their manager.\n\n"
+            "**Timesheet Deadlines**:\n"
+            "- Weekly timesheets must be submitted by **Friday 5:00 PM**.\n"
+            "- Ensure all project and training hours are accurately accounted for.\n"
+            "- For questions, email `people-ops@company.com` or use the Timesheet Status action."
+        )
     },
     {
         "insight_id": "INSIGHT-2026-005",
+        "doc_id": "DOC-MGR-001",
         "title": "Q4 Performance Calibration & Compensation Review Cycle",
         "category": "POLICY",
         "summary": "Managers must complete peer review syntheses and submit promotion calibration packages by October 15th for department review.",
@@ -556,7 +704,18 @@ KNOWLEDGE_INSIGHTS: List[Dict[str, Any]] = [
         "access_level": "manager",
         "effective_date": "2026-09-05",
         "highlight_tag": "Confidential - Manager / HR",
-        "gcs_uri": "gs://patchamomma-knowledge-mesh/hr/compensation_guidelines_2026.pdf",
+        "gcs_uri": "gs://company-knowledge-mesh/hr/compensation_guidelines_2026.pdf",
         "action_suggestion": "Review managerial compensation bands and calibration schedules.",
+        "full_content": (
+            "### Q4 Managerial Calibration & Promotion Review Guidelines\n\n"
+            "*(Restricted to Managers and People Operations Partners)*\n\n"
+            "**Timeline & Action Milestones**:\n"
+            "- September 15 – October 5: Self and peer review window.\n"
+            "- October 15: Manager evaluation forms due.\n"
+            "- October 20 – 28: Cross-functional calibration panels.\n"
+            "- November 15: Annual merit adjustment and equity refresh distribution.\n\n"
+            "**Promotion Requirements**:\n"
+            "- Two senior peer reviews demonstrating sustained impact at the next career level."
+        )
     },
 ]

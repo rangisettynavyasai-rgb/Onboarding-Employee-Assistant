@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Patchamomma 2026: Role-Based Access Policy & Pre-Retrieval ACL Filters
+Company AI Assistant: Role-Based Access Policy & Pre-Retrieval ACL Filters
 Implements BigQuery-grounded security policies across employees, teams, and documents.
 """
-from typing import List, Optional
+from typing import List, Optional, Any
 from backend.models import EmployeeRecord, AuthorizationRole, KnowledgeAsset, KnowledgeChunk
 
 class AuthPolicy:
@@ -77,3 +77,11 @@ class AuthPolicy:
                 )
                 filtered.append(asset_copy)
         return filtered
+
+def can_access_chunk(employee: EmployeeRecord, chunk_team: str, chunk_access_level: str) -> bool:
+    return AuthPolicy.can_access_chunk(employee, chunk_team, chunk_access_level)
+
+def is_manager_or_hr(role: Any) -> bool:
+    role_str = role.value if isinstance(role, AuthorizationRole) else str(role).lower()
+    return role_str in ["manager", "hr"]
+

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Patchamomma 2026: Core Python Data Models
-Defines all schema types matching BigQuery tables in patchamomma-505416.employee_ai
+Company AI Assistant: Core Python Data Models
+Defines all schema types matching BigQuery tables in company-internal.employee_ai
 """
 from dataclasses import dataclass, field
 from enum import Enum
@@ -205,3 +205,137 @@ class IncidentRecord:
             "assigned_team": self.assigned_team,
             "created_at": self.created_at,
         }
+
+@dataclass
+class KnowledgeMeshInsight:
+    insight_id: str
+    title: str
+    category: str
+    summary: str
+    team: str
+    access_level: str
+    effective_date: str
+    highlight_tag: str
+    action_suggestion: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "insight_id": self.insight_id,
+            "title": self.title,
+            "category": self.category,
+            "summary": self.summary,
+            "team": self.team,
+            "access_level": self.access_level,
+            "effective_date": self.effective_date,
+            "highlight_tag": self.highlight_tag,
+            "action_suggestion": self.action_suggestion,
+        }
+
+@dataclass
+class TeamEscalationContact:
+    team: str
+    primary_lead_name: str
+    primary_lead_email: str
+    is_primary_on_vacation: bool
+    backup_lead_name: str
+    backup_lead_email: str
+    escalation_channel: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "team": self.team,
+            "primary_lead_name": self.primary_lead_name,
+            "primary_lead_email": self.primary_lead_email,
+            "is_primary_on_vacation": self.is_primary_on_vacation,
+            "backup_lead_name": self.backup_lead_name,
+            "backup_lead_email": self.backup_lead_email,
+            "escalation_channel": self.escalation_channel,
+        }
+
+@dataclass
+class TeamMemberOnboardingProgress:
+    employee_id: str
+    name: str
+    email: str
+    team: str
+    joining_date: str
+    total_tasks: int
+    completed_tasks: int
+    pending_tasks: int
+    overdue_tasks: int
+    progress_percentage: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "employee_id": self.employee_id,
+            "name": self.name,
+            "email": self.email,
+            "team": self.team,
+            "joining_date": self.joining_date,
+            "total_tasks": self.total_tasks,
+            "completed_tasks": self.completed_tasks,
+            "pending_tasks": self.pending_tasks,
+            "overdue_tasks": self.overdue_tasks,
+            "progress_percentage": self.progress_percentage,
+        }
+
+@dataclass
+class TeamOnboardingSummary:
+    manager_id: str
+    manager_name: str
+    team: str
+    total_team_members: int
+    overall_progress_percentage: int
+    members: List[TeamMemberOnboardingProgress] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "manager_id": self.manager_id,
+            "manager_name": self.manager_name,
+            "team": self.team,
+            "total_team_members": self.total_team_members,
+            "overall_progress_percentage": self.overall_progress_percentage,
+            "members": [m.to_dict() for m in self.members],
+        }
+
+@dataclass
+class UserSession:
+    session_id: str
+    employee_id: str
+    created_at: str
+    last_accessed_at: str
+    history: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "session_id": self.session_id,
+            "employee_id": self.employee_id,
+            "created_at": self.created_at,
+            "last_accessed_at": self.last_accessed_at,
+            "message_count": len(self.history),
+            "history": self.history,
+        }
+
+@dataclass
+class TimesheetStatusSummary:
+    employee_id: str
+    status: str
+    hours_logged: float
+    period_start: str
+    period_end: str
+    due_date: str
+    is_overdue: bool
+    action_required: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "employee_id": self.employee_id,
+            "status": self.status,
+            "hours_logged": self.hours_logged,
+            "period_start": self.period_start,
+            "period_end": self.period_end,
+            "due_date": self.due_date,
+            "is_overdue": self.is_overdue,
+            "action_required": self.action_required,
+        }
+

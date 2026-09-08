@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Onboarding Employee Assistant</title>
-  <meta name="description" content="Enterprise AI Onboarding & Employee Assistant grounded in Google Cloud Platform and Google Identity.">
+  <meta name="description" content="Unified internal workspace for employee onboarding, team knowledge, runbooks, and daily operations.">
   <meta property="og:title" content="Onboarding Employee Assistant">
-  <meta property="og:description" content="Enterprise AI Onboarding & Employee Assistant grounded in Google Cloud Platform and Google Identity.">
+  <meta property="og:description" content="Unified internal workspace for employee onboarding, team knowledge, runbooks, and daily operations.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -96,6 +96,67 @@
       letter-spacing: 0.05em;
     }
     .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
+
+    /* Google SSO Button */
+    .btn-google {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      padding: 12px 24px;
+      background: #FFFFFF;
+      color: #1F2937;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    .btn-google:hover {
+      background: #F3F4F6;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+      transform: translateY(-1px);
+    }
+    .btn-google:active {
+      transform: translateY(0);
+    }
+    .google-icon {
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+    }
+
+    /* Collapsed Persona Switcher */
+    .persona-toggle-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 14px;
+      background: transparent;
+      border: 1px dashed var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: 14px;
+    }
+    .persona-toggle-bar:hover {
+      background: var(--bg-glass);
+      color: var(--text-primary);
+      border-color: var(--accent-indigo);
+    }
+    #persona-toggle-arrow {
+      font-size: 11px;
+      display: inline-block;
+      transition: transform 0.2s ease;
+    }
 
     .persona-grid {
       display: grid;
@@ -521,6 +582,191 @@
       color: var(--text-primary);
       font-size: 13px;
     }
+    .modal-card-lg {
+      width: min(840px, 95vw);
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 24px 28px;
+    }
+    .modal-card-md {
+      width: min(560px, 94vw);
+      padding: 26px;
+    }
+    .modal-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .modal-close-btn {
+      background: none;
+      border: none;
+      font-size: 22px;
+      color: var(--text-muted);
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px;
+      transition: color 0.15s;
+    }
+    .modal-close-btn:hover { color: var(--text-primary); }
+    .modal-content-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 4px 16px 0;
+      line-height: 1.6;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .doc-meta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(99, 102, 241, 0.18);
+      color: #A5B4FC;
+    }
+    .doc-content-body h1, .doc-content-body h2, .doc-content-body h3 {
+      color: var(--text-primary);
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+    .doc-content-body h1 { font-size: 18px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 6px; }
+    .doc-content-body h2 { font-size: 15px; }
+    .doc-content-body h3 { font-size: 13px; }
+    .doc-content-body ul, .doc-content-body ol {
+      margin-left: 20px;
+      margin-bottom: 12px;
+    }
+    .doc-content-body li {
+      margin-bottom: 4px;
+    }
+    .doc-content-body pre {
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-family: monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      color: #C7D2FE;
+      margin: 10px 0;
+    }
+    .doc-content-body code {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-size: 12px;
+      color: #A5B4FC;
+    }
+    .doc-content-body pre code {
+      background: none;
+      padding: 0;
+    }
+    .status-pill-submitted {
+      background: rgba(16, 185, 129, 0.2);
+      color: #6ee7b7;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-block;
+    }
+    .status-pill-pending {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fcd34d;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-block;
+    }
+    .runbook-item-card {
+      padding: 12px 14px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      background: var(--bg-glass);
+      cursor: pointer;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+    .runbook-item-card:hover {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: var(--accent-indigo);
+      transform: translateY(-1px);
+    }
+    .read-doc-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-top: 6px;
+    }
+    .contact-card {
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+    }
+    .contact-card:hover {
+      border-color: var(--accent-indigo);
+      background: rgba(99, 102, 241, 0.08);
+    }
+    .contact-role-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(99, 102, 241, 0.2);
+      color: #A5B4FC;
+    }
+    .contact-status-online {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: #6EE7B7;
+    }
+    .contact-status-ooo {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: #FCD34D;
+    }
+    .contact-btn-action {
+      background: var(--bg-glass);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      padding: 5px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+    .contact-btn-action:hover {
+      background: rgba(99, 102, 241, 0.2);
+      border-color: var(--accent-indigo);
+    }
   </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -532,18 +778,35 @@
     <section id="auth-view">
       <div class="auth-logo">✦</div>
       <h1 class="auth-title">Employee AI Assistant</h1>
-      <p class="auth-subtitle">Production-grade AI Grounded in Google Cloud Identity, BigQuery, GCS, and Firestore Native Mode.</p>
+      <p class="auth-subtitle">Your unified internal workspace for team knowledge, onboarding, and daily operations.</p>
 
-      <!-- Real Google Identity Sign-In (Production) -->
-      <div id="google-button" style="display: flex; justify-content: center; margin-bottom: 16px;"></div>
+      <!-- Prominent Google Identity Sign-In -->
+      <button 
+        id="btn-google-sso" 
+        type="button" 
+        class="btn-google" 
+        onclick="handleGoogleSignInClick()"
+        aria-label="Continue with Google"
+      >
+        <svg class="google-icon" viewBox="0 0 24 24" width="20" height="20">
+          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.29 21.36 7.35 24 12 24z"/>
+          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.94 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
+          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.29 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+        </svg>
+        <span>Continue with Google</span>
+      </button>
 
-      <div class="divider">Employee Corporate Sign In</div>
+      <!-- Optional Container for Google Identity Services Iframe -->
+      <div id="google-button" style="display: none; justify-content: center; margin-top: 10px;"></div>
 
-      <!-- Real Employee Sign-In Form -->
-      <form id="employee-login-form" onsubmit="handleEmployeeSignIn(event)" style="display: flex; flex-direction: column; gap: 14px; text-align: left; margin-bottom: 18px;">
+      <div class="divider">or sign in with corporate credentials</div>
+
+      <!-- Standard Corporate Sign-In Form -->
+      <form id="employee-login-form" onsubmit="handleEmployeeSignIn(event)" style="display: flex; flex-direction: column; gap: 14px; text-align: left; margin-bottom: 16px;">
         <div>
-          <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
-            Corporate Email or Employee ID
+          <label for="login-identity-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+            Work Email or Employee ID
           </label>
           <input 
             id="login-identity-input" 
@@ -551,21 +814,24 @@
             class="form-control" 
             placeholder="e.g. rahul.sharma@company.com or EMP-2026-001" 
             required 
+            autocomplete="username"
             style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
           />
         </div>
         <div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0;">
-              SSO Password / Token (Optional for Sandbox)
+            <label for="login-password-input" style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0;">
+              Password
             </label>
-            <span style="font-size: 11px; color: var(--accent-emerald);">SSO Protected</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Demo: password123</span>
           </div>
           <input 
-            id="login-secret-input" 
+            id="login-password-input" 
             type="password" 
             class="form-control" 
-            placeholder="••••••••••••" 
+            placeholder="Enter your password" 
+            required
+            autocomplete="current-password"
             style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
           />
         </div>
@@ -575,32 +841,39 @@
           class="btn-send" 
           style="width: 100%; justify-content: center; padding: 12px; font-size: 14px; margin-top: 4px;"
         >
-          Sign In to Corporate Workspace
+          Sign In
         </button>
       </form>
 
-      <div id="auth-status" style="font-size: 13px; color: var(--text-muted); min-height: 20px; margin-bottom: 12px;"></div>
+      <div id="auth-status" style="font-size: 13px; color: var(--text-muted); min-height: 20px; margin-bottom: 8px;"></div>
 
-      <div class="divider" style="margin-top: 10px; cursor: pointer;" onclick="togglePersonaHelper()">
-        <span>Quick Test Roster</span>
-        <span id="persona-toggle-arrow" style="font-size: 10px; margin-left: 6px;">▼</span>
-      </div>
+      <!-- Collapsed Quick Test Roster -->
+      <button 
+        id="btn-toggle-roster" 
+        type="button" 
+        class="persona-toggle-bar" 
+        onclick="togglePersonaHelper()"
+        aria-expanded="false"
+      >
+        <span id="persona-toggle-arrow">▶</span>
+        <span>Quick Persona Switcher (For Demo & Testing)</span>
+      </button>
 
-      <!-- Developer Persona Switcher for Quick Verification -->
-      <div id="persona-grid-container" class="persona-grid">
-        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-rahul')">
+      <!-- Developer Persona Switcher for Quick Verification (Collapsed by Default) -->
+      <div id="persona-grid-container" class="persona-grid" style="display: none;">
+        <button type="button" class="persona-btn" onclick="signInWithMockToken('mock-google-token-rahul')">
           <span class="persona-name">Rahul Sharma</span>
           <span class="persona-role">Day-1 SWE • Payments (EMP-2026-001)</span>
         </button>
-        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-maya')">
+        <button type="button" class="persona-btn" onclick="signInWithMockToken('mock-google-token-maya')">
           <span class="persona-name">Maya Lin</span>
           <span class="persona-role">Day-1 Intern • Platform (EMP-2026-002)</span>
         </button>
-        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-sarah')">
+        <button type="button" class="persona-btn" onclick="signInWithMockToken('mock-google-token-sarah')">
           <span class="persona-name">Sarah Jenkins</span>
           <span class="persona-role">Manager • Payments (EMP-2026-010)</span>
         </button>
-        <button class="persona-btn" onclick="signInWithMockToken('mock-google-token-amanda')">
+        <button type="button" class="persona-btn" onclick="signInWithMockToken('mock-google-token-amanda')">
           <span class="persona-name">Amanda Walker</span>
           <span class="persona-role">HR Specialist (EMP-2026-009)</span>
         </button>
@@ -615,10 +888,10 @@
         <div class="brand-section">
           <div class="auth-logo" style="width: 38px; height: 38px; font-size: 18px; margin: 0;">✦</div>
           <div>
-            <h2 style="font-size: 18px;">Patchamomma AI Assistant</h2>
-            <div style="font-size: 11px; color: var(--text-muted);">Zero-Trust Enterprise Perimeter • GCP Cloud Run</div>
+            <h2 style="font-size: 18px;">Company AI Assistant</h2>
+            <div style="font-size: 11px; color: var(--text-muted);">Corporate Workspace • Internal Network</div>
           </div>
-          <span class="brand-badge">PROD SECURE</span>
+          <span class="brand-badge">INTERNAL ONLY</span>
         </div>
 
         <div class="user-profile-widget">
@@ -641,7 +914,7 @@
           
           <!-- Proactive Greeting Card -->
           <div class="glass-card">
-            <h3 style="font-size: 15px; margin-bottom: 8px; color: var(--accent-cyan);">Proactive Greeting</h3>
+            <h3 style="font-size: 15px; margin-bottom: 8px; color: var(--accent-cyan);">Today's Briefing</h3>
             <p id="proactive-greeting-text" style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;"></p>
           </div>
 
@@ -684,7 +957,7 @@
               </div>
             </div>
             <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
-              ACL-governed policy & runbook updates dynamically streamed from company BigQuery mesh.
+              Verified team runbooks, engineering standards, and company guidelines.
             </p>
             <div id="mesh-insights-container" class="mesh-insights-list">
               <div style="font-size: 12px; color: var(--text-muted); padding: 8px 0;">Loading mesh insights...</div>
@@ -695,19 +968,19 @@
           <div class="glass-card">
             <h3 style="font-size: 15px; margin-bottom: 4px;">Quick Actions</h3>
             <div class="quick-actions">
-              <button class="action-card-btn" onclick="checkTimesheet()">
+              <button class="action-card-btn" onclick="openContactsModal()" title="Connect directly to assigned buddy, manager, and escalation leads" style="border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.08);">
+                <span class="action-card-icon">🤝</span>
+                Point of Contact
+              </button>
+              <button class="action-card-btn" onclick="openTimesheetModal()" title="View and submit your weekly timesheet">
                 <span class="action-card-icon">⏱️</span>
                 Timesheet Status
               </button>
-              <button class="action-card-btn" onclick="openIncidentModal()">
+              <button class="action-card-btn" onclick="openIncidentModal()" title="Report an IT, platform or hardware blocker">
                 <span class="action-card-icon">🚨</span>
                 Report IT Ticket
               </button>
-              <button class="action-card-btn" onclick="quickPrompt('What are our corporate logging and coding standards?')">
-                <span class="action-card-icon">💻</span>
-                Coding Standards
-              </button>
-              <button class="action-card-btn" onclick="quickPrompt('Show me the Payments Architecture and Cloud SQL runbook')">
+              <button class="action-card-btn" onclick="openRunbooksModal()" title="Browse team runbooks, architecture, and guides">
                 <span class="action-card-icon">📚</span>
                 Search Runbooks
               </button>
@@ -720,12 +993,17 @@
         <main class="chat-panel">
           <div class="chat-header">
             <div>
-              <h3 style="font-size: 16px;">Multi-Agent Conversational Hub</h3>
-              <div style="font-size: 12px; color: var(--text-muted);">Grounded in BigQuery, GCS Knowledge Mesh, & Firestore</div>
+              <h3 style="font-size: 16px;">Workspace Assistant</h3>
+              <div style="font-size: 12px; color: var(--text-muted);">Ask questions about onboarding, team docs, coding standards, and IT support.</div>
             </div>
-            <div class="agent-status-indicator">
-              <div class="pulse-dot"></div>
-              <span>Supervisor Active</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <button class="btn-secondary" onclick="openContactsModal()" style="padding: 5px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.12);" title="Connect directly to your human points of contact">
+                <span>🤝</span> Point to Person
+              </button>
+              <div class="agent-status-indicator">
+                <div class="pulse-dot"></div>
+                <span>Ready to help</span>
+              </div>
             </div>
           </div>
 
@@ -754,7 +1032,10 @@
   <!-- Incident Creation Modal -->
   <div id="incident-modal" class="modal-backdrop">
     <div class="modal-card">
-      <h3 style="font-size: 18px; margin-bottom: 14px;">Report IT or Platform Incident</h3>
+      <div class="modal-header-row" style="margin-bottom: 14px;">
+        <h3 style="font-size: 17px; margin: 0;">Report IT or Platform Incident</h3>
+        <button class="modal-close-btn" onclick="closeIncidentModal()" aria-label="Close">✕</button>
+      </div>
       <div class="form-group">
         <label>Category</label>
         <select id="inc-category" class="form-control">
@@ -776,368 +1057,140 @@
     </div>
   </div>
 
+  <!-- Knowledge Mesh Document Viewer Modal -->
+  <div id="document-modal" class="modal-backdrop">
+    <div class="modal-card modal-card-lg">
+      <div class="modal-header-row">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span id="doc-modal-type-badge" class="mesh-category-pill cat-STANDARDS">STANDARDS</span>
+            <span id="doc-modal-id-badge" class="doc-meta-badge">DOC-ID</span>
+            <span id="doc-modal-clearance-badge" class="role-tag role-employee">Employee</span>
+          </div>
+          <h2 id="doc-modal-title" style="font-size: 18px; margin: 0; color: var(--text-primary);">Document Title</h2>
+          <div id="doc-modal-uri" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: monospace;">gs://...</div>
+        </div>
+        <button class="modal-close-btn" onclick="closeDocumentModal()" aria-label="Close">✕</button>
+      </div>
+      <div id="doc-modal-content" class="modal-content-scroll doc-content-body">
+        Loading document content...
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 14px; margin-top: 8px;">
+        <button id="doc-copy-uri-btn" class="btn-secondary" onclick="copyDocumentUri()">📋 Copy Asset URI</button>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn-secondary" onclick="closeDocumentModal()">Close</button>
+          <button id="doc-ask-ai-btn" class="btn-send" onclick="askAboutCurrentDocument()">💬 Ask Assistant</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timesheet Management Modal -->
+  <div id="timesheet-modal" class="modal-backdrop">
+    <div class="modal-card modal-card-md">
+      <div class="modal-header-row">
+        <div>
+          <h3 style="font-size: 17px; margin: 0;">Weekly Timesheet Portal</h3>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Core operations • Automated payroll reconciliation</div>
+        </div>
+        <button class="modal-close-btn" onclick="closeTimesheetModal()" aria-label="Close">✕</button>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-glass); padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); margin-bottom: 16px;">
+          <div>
+            <div style="font-size: 11px; color: var(--text-muted);">Current Cycle</div>
+            <div id="ts-modal-cycle" style="font-size: 14px; font-weight: 600;">Week ending Friday, 5:00 PM</div>
+          </div>
+          <div id="ts-modal-status-pill" class="status-pill-pending">PENDING SUBMISSION</div>
+        </div>
+
+        <form id="timesheet-form" onsubmit="handleTimesheetSubmit(event)">
+          <div class="form-group">
+            <label for="ts-hours-input">Hours Logged</label>
+            <input id="ts-hours-input" type="number" step="0.5" min="0" max="80" value="40.0" class="form-control" required style="font-size: 15px; font-weight: 600;" />
+            <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Standard work week: 40.0 hours</span>
+          </div>
+
+          <div class="form-group">
+            <label for="ts-notes-input">Project Summary / Notes (Optional)</label>
+            <textarea id="ts-notes-input" class="form-control" rows="2" placeholder="e.g. Completed Day-1 setup, sprint tasks, and payments ledger review."></textarea>
+          </div>
+
+          <div id="ts-feedback" style="min-height: 20px; font-size: 12px; margin-bottom: 12px;"></div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border-subtle); padding-top: 14px;">
+            <button type="button" class="btn-secondary" onclick="closeTimesheetModal()">Close</button>
+            <button id="ts-submit-btn" type="submit" class="btn-send">Submit Timesheet</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Runbooks & Documents Browser Modal -->
+  <div id="runbooks-modal" class="modal-backdrop">
+    <div class="modal-card modal-card-lg">
+      <div class="modal-header-row">
+        <div>
+          <h3 style="font-size: 18px; margin: 0;">Knowledge Mesh Runbooks & Documents</h3>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Verified team runbooks, engineering blueprints, and corporate guidelines.</div>
+        </div>
+        <button class="modal-close-btn" onclick="closeRunbooksModal()" aria-label="Close">✕</button>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-top: 14px; margin-bottom: 12px;">
+        <input 
+          id="runbooks-search-input" 
+          type="text" 
+          class="form-control" 
+          placeholder="Filter runbooks by title, team, or keyword..." 
+          oninput="handleRunbookSearch(this.value)"
+          style="flex: 1;"
+        />
+      </div>
+
+      <div id="runbooks-list-container" class="modal-content-scroll">
+        <div style="font-size: 12px; color: var(--text-muted); padding: 20px 0; text-align: center;">Loading authorized runbooks...</div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 8px;">
+        <button class="btn-secondary" onclick="closeRunbooksModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Point to Person / Team Directory Modal -->
+  <div id="contacts-modal" class="modal-backdrop">
+    <div class="modal-card modal-card-lg">
+      <div class="modal-header-row">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="mesh-category-pill cat-STANDARDS">HUMAN SUPPORT</span>
+            <span class="doc-meta-badge">Point to Person</span>
+          </div>
+          <h3 style="font-size: 18px; margin: 0;">Connect with Team & Domain Leads</h3>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+            When you need personal guidance or answers beyond internal runbooks, connect directly with your dedicated human points of contact.
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="closeContactsModal()" aria-label="Close">✕</button>
+      </div>
+
+      <div id="contacts-modal-content" class="modal-content-scroll">
+        <div style="font-size: 12px; color: var(--text-muted); padding: 20px 0; text-align: center;">Loading team contact directory...</div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 8px;">
+        <button class="btn-secondary" onclick="closeContactsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Compiled UI TypeScript Bundle -->
   <script>
-    let activeBearerToken = null;
-    let currentSessionId = null;
-    let currentUserProfile = null;
-
-    function setAuthStatus(msg, isError = false) {
-      const el = document.getElementById("auth-status");
-      el.textContent = msg;
-      el.style.color = isError ? "var(--accent-rose)" : "var(--text-muted)";
-    }
-
-    async function apiRequest(path, method = "GET", body = null) {
-      const headers = { "Authorization": `Bearer ${activeBearerToken}` };
-      if (body) headers["Content-Type"] = "application/json";
-      const resp = await fetch(path, {
-        method: method,
-        headers: headers,
-        body: body ? JSON.stringify(body) : null
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.message || data.detail || `HTTP Error ${resp.status}`);
-      return data;
-    }
-
-    async function initializeSession(token) {
-      activeBearerToken = token;
-      setAuthStatus("Verifying identity with Google JWKS & Corporate Directory...");
-      try {
-        const landing = await apiRequest("/api/v1/landing", "POST");
-        currentUserProfile = landing;
-
-        // Restore or initialize persistent session ID for this employee
-        const sessionKey = `onboarding_session_${landing.employee_id}`;
-        currentSessionId = localStorage.getItem(sessionKey) || `sess-${landing.employee_id.toLowerCase()}`;
-        localStorage.setItem(sessionKey, currentSessionId);
-
-        document.getElementById("auth-view").style.display = "none";
-        document.getElementById("dashboard-view").style.display = "flex";
-
-        document.getElementById("user-display-name").textContent = landing.name;
-        document.getElementById("proactive-greeting-text").textContent = landing.proactive_greeting;
-
-        // Fetch Checklist
-        await refreshChecklist();
-
-        // Fetch Knowledge Mesh Insights for Sidebar Widget
-        await refreshKnowledgeInsights();
-
-        // Attempt to restore persistent conversation history from Firestore
-        await restoreSessionHistory(currentSessionId, landing.name);
-
-      } catch (err) {
-        setAuthStatus(err.message, true);
-        activeBearerToken = null;
-      }
-    }
-
-    async function restoreSessionHistory(sessionId, userName) {
-      try {
-        const sessionData = await apiRequest(`/api/v1/session/history?session_id=${sessionId}`);
-        const stream = document.getElementById("chat-stream");
-        stream.innerHTML = "";
-
-        if (sessionData.history && sessionData.history.length > 0) {
-          sessionData.history.forEach(m => {
-            appendChatMessage(m.role, m.content, m.role === "assistant" ? "Supervisor Agent" : null);
-          });
-        } else {
-          // Initial Assistant welcome message
-          appendChatMessage(
-            "assistant",
-            `👋 Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant.\nYour session history is permanently backed by Cloud Firestore. How can I help you today?`,
-            "Supervisor Agent",
-            ["Check Timesheet", "View Pending Tasks", "Search Runbooks"]
-          );
-        }
-      } catch (e) {
-        console.warn("Could not load previous session history:", e);
-        appendChatMessage(
-          "assistant",
-          `👋 Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`,
-          "Supervisor Agent",
-          ["Check Timesheet", "View Pending Tasks", "Search Runbooks"]
-        );
-      }
-    }
-
-    async function refreshKnowledgeInsights() {
-      const container = document.getElementById("mesh-insights-container");
-      try {
-        const data = await apiRequest("/api/v1/knowledge/insights");
-        if (!data.insights || data.insights.length === 0) {
-          container.innerHTML = `<div style="font-size: 11px; color: var(--text-muted); padding: 8px 0;">No new updates for your team access level.</div>`;
-          return;
-        }
-
-        container.innerHTML = "";
-        data.insights.forEach(item => {
-          const card = document.createElement("div");
-          card.className = "mesh-insight-item";
-          card.innerHTML = `
-            <div class="mesh-insight-meta">
-              <span class="mesh-category-pill cat-${item.category}">${item.category}</span>
-              <span style="color: var(--text-muted); font-size: 10px;">${item.effective_date}</span>
-            </div>
-            <div class="mesh-insight-title">${item.title}</div>
-            <div class="mesh-insight-summary">${item.summary}</div>
-            <div style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 10px; color: var(--accent-indigo); font-weight: 500;">${item.highlight_tag}</span>
-              <span style="font-size: 10px; color: var(--text-muted);">Team: ${item.team}</span>
-            </div>
-          `;
-          card.onclick = () => {
-            quickPrompt(`Explain the insight: "${item.title}" and the action needed: "${item.action_suggestion}"`);
-          };
-          container.appendChild(card);
-        });
-      } catch (err) {
-        console.error("Failed to load knowledge insights:", err);
-        container.innerHTML = `<div style="font-size: 11px; color: var(--accent-rose); padding: 6px 0;">Failed to sync Knowledge Mesh insights.</div>`;
-      }
-    }
-
-
-    let currentChecklistData = null;
-    let showCompletedTasks = true;
-
-    function toggleCompletedTasks(checked) {
-      showCompletedTasks = checked;
-      renderChecklistTasks();
-    }
-
-    function renderChecklistTasks() {
-      if (!currentChecklistData) return;
-      const listEl = document.getElementById("task-list-container");
-      const badgeCount = document.getElementById("completed-badge-count");
-      
-      const completedTasks = currentChecklistData.tasks.filter(t => t.status === "COMPLETED");
-      if (badgeCount) {
-        badgeCount.textContent = completedTasks.length;
-      }
-
-      listEl.innerHTML = "";
-      const visibleTasks = currentChecklistData.tasks.filter(t => {
-        if (t.status === "COMPLETED" && !showCompletedTasks) {
-          return false;
-        }
-        return true;
-      });
-
-      if (visibleTasks.length === 0) {
-        listEl.innerHTML = `
-          <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 11px;">
-            ${!showCompletedTasks && completedTasks.length > 0 ? "All completed tasks hidden. Toggle switch above to view." : "No tasks found."}
-          </div>
-        `;
-        return;
-      }
-
-      visibleTasks.forEach(t => {
-        const isDone = t.status === "COMPLETED";
-        const isOverdue = !isDone && (t.is_overdue || (t.due_date && t.due_date < "2026-09-07"));
-        const div = document.createElement("div");
-        div.className = `task-item ${isDone ? "completed" : ""} ${isOverdue ? "overdue" : ""}`;
-
-        const dueDateText = t.due_date ? `Due: ${t.due_date}` : `Due in +${t.due_days_after_start}d`;
-
-        div.innerHTML = `
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: 600; font-size: 12px; color: ${isOverdue ? '#fda4af' : 'var(--text-primary)'};">${t.title}</div>
-            <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">
-              ${t.category} • ${t.task_id}
-            </div>
-            <div class="due-date-badge ${isOverdue ? 'overdue-badge' : ''}">
-              <span>${isOverdue ? '⚠️ Overdue:' : '📅'}</span>
-              <span>${dueDateText}</span>
-            </div>
-          </div>
-          <div style="flex-shrink: 0; margin-left: 8px;">
-            ${!isDone 
-              ? `<button class="task-btn-done" onclick="completeTask('${t.task_id}')">Done</button>` 
-              : `<span style="color: var(--accent-emerald); font-weight: 700; font-size: 14px;">✓</span>`
-            }
-          </div>
-        `;
-        listEl.appendChild(div);
-      });
-    }
-
-    async function refreshChecklist() {
-      try {
-        const checklist = await apiRequest("/api/v1/onboarding/my-status");
-        currentChecklistData = checklist;
-
-        const fill = document.getElementById("progress-bar-fill");
-        const pctEl = document.getElementById("progress-percentage");
-
-        const pct = Math.round((checklist.completed_count / checklist.total_count) * 100) || 0;
-        fill.style.width = pct + "%";
-        pctEl.textContent = `${pct}% (${checklist.completed_count}/${checklist.total_count})`;
-
-        renderChecklistTasks();
-      } catch (e) {
-        console.error("Checklist error:", e);
-      }
-    }
-
-    async function completeTask(taskId) {
-      try {
-        await apiRequest("/api/v1/onboarding/complete-task", "POST", { task_id: taskId });
-        await refreshChecklist();
-        appendChatMessage("assistant", `✅ Marked task **${taskId}** as completed! Your onboarding progress has been updated in BigQuery.`, "Onboarding Specialist");
-      } catch (err) {
-        alert("Could not complete task: " + err.message);
-      }
-    }
-
-    async function sendChatMessage() {
-      const input = document.getElementById("user-input-box");
-      const msg = input.value.trim();
-      if (!msg) return;
-
-      input.value = "";
-      appendChatMessage("user", msg);
-
-      const btn = document.getElementById("send-button");
-      btn.disabled = true;
-
-      try {
-        const res = await apiRequest("/api/v1/chat", "POST", {
-          message: msg,
-          session_id: currentSessionId
-        });
-        currentSessionId = res.session_id;
-        appendChatMessage("assistant", res.response, res.agent_invoked, res.suggested_actions);
-      } catch (err) {
-        appendChatMessage("assistant", `⚠️ Error: ${err.message}`, "Security Guard");
-      } finally {
-        btn.disabled = false;
-      }
-    }
-
-    function appendChatMessage(role, text, agentName = null, suggestions = []) {
-      const stream = document.getElementById("chat-stream");
-      const bubble = document.createElement("div");
-      bubble.className = `message-bubble ${role === "user" ? "user-message" : "assistant-message"}`;
-
-      let content = "";
-      if (role === "assistant" && agentName) {
-        content += `<div class="agent-badge-tag">⚡ ${agentName}</div><br>`;
-      }
-      content += text.replace(/\n/g, "<br>");
-
-      if (suggestions && suggestions.length > 0) {
-        content += `<div class="chips-container">` + 
-          suggestions.map(s => `<button class="chip-btn" onclick="quickPrompt('${s}')">${s}</button>`).join("") + 
-          `</div>`;
-      }
-
-      bubble.innerHTML = content;
-      stream.appendChild(bubble);
-      stream.scrollTop = stream.scrollHeight;
-    }
-
-    function quickPrompt(txt) {
-      document.getElementById("user-input-box").value = txt;
-      sendChatMessage();
-    }
-
-    async function checkTimesheet() {
-      try {
-        const ts = await apiRequest("/api/v1/timesheets/my-status");
-        appendChatMessage("assistant", `⏱️ **Timesheet Status**: Current status is **${ts.status}** for period ending ${ts.period_end || ts.period}. Logged Hours: ${ts.hours_logged}.`, "Operations Action");
-      } catch (err) {
-        appendChatMessage("assistant", `⚠️ Timesheet lookup failed: ${err.message}`, "Operations Action");
-      }
-    }
-
-    function openIncidentModal() { document.getElementById("incident-modal").style.display = "grid"; }
-    function closeIncidentModal() { document.getElementById("incident-modal").style.display = "none"; }
-
-    async function submitIncident() {
-      const cat = document.getElementById("inc-category").value;
-      const summary = document.getElementById("inc-summary").value.trim();
-      if (!summary) return alert("Please provide an incident summary");
-
-      try {
-        const inc = await apiRequest("/api/v1/incidents/create", "POST", {
-          category: cat,
-          summary: summary,
-          severity: "MEDIUM",
-          confirmed: true
-        });
-        closeIncidentModal();
-        appendChatMessage("assistant", `🚨 **Incident Created**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}**. Status: ${inc.status}.`, "Operations Action");
-      } catch (e) {
-        alert("Incident creation error: " + e.message);
-      }
-    }
-
-    function togglePersonaHelper() {
-      const container = document.getElementById("persona-grid-container");
-      const arrow = document.getElementById("persona-toggle-arrow");
-      if (container.style.display === "none") {
-        container.style.display = "grid";
-        arrow.textContent = "▼";
-      } else {
-        container.style.display = "none";
-        arrow.textContent = "▶";
-      }
-    }
-
-    async function handleEmployeeSignIn(event) {
-      event.preventDefault();
-      const identity = document.getElementById("login-identity-input").value.trim();
-      if (!identity) return;
-
-      const btn = document.getElementById("btn-employee-login");
-      btn.disabled = true;
-      btn.textContent = "Verifying Credentials...";
-      setAuthStatus("Connecting to enterprise identity directory...");
-
-      try {
-        await initializeSession(identity);
-      } catch (err) {
-        setAuthStatus("Authentication failed: " + err.message, true);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Sign In to Corporate Workspace";
-      }
-    }
-
-    function signInWithMockToken(token) {
-      initializeSession(token);
-    }
-
-    function signOut() {
-      activeBearerToken = null;
-      currentSessionId = null;
-      document.getElementById("dashboard-view").style.display = "none";
-      document.getElementById("auth-view").style.display = "block";
-      setAuthStatus("Signed out. Select a sign-in method to continue.");
-      if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
-    }
-
-    // Google Identity Services (GIS) Live OAuth Initialization
-    window.addEventListener("load", () => {
-      const clientId = "__GOOGLE_CLIENT_ID__";
-      if (window.google?.accounts?.id && clientId && !clientId.startsWith("__")) {
-        google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response) => {
-            initializeSession(response.credential);
-          },
-          auto_select: false
-        });
-        google.accounts.id.renderButton(
-          document.getElementById("google-button"),
-          { theme: "filled_blue", size: "large", width: 360, text: "signin_with", shape: "rectangular" }
-        );
-      }
-    });
+    window.__GOOGLE_CLIENT_ID__ = "__GOOGLE_CLIENT_ID__";
   </script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

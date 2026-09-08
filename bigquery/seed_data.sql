@@ -1,6 +1,6 @@
 -- ============================================================================
--- Patchamomma 2026: BigQuery Synthetic Seed Data
--- Target Dataset: employee_ai (Project: patchamomma-505416)
+-- Company AI Assistant: BigQuery Synthetic Seed Data
+-- Target Dataset: employee_ai
 -- ============================================================================
 
 -- 1. Seed Employees
@@ -33,7 +33,7 @@ VALUES
 INSERT INTO `patchamomma-505416.employee_ai.knowledge_assets`
 (document_id, title, source, gcs_uri, team, access_level, document_type, owner, description, created_at, updated_at)
 VALUES
-('DOC-ALL-001', 'Patchamomma 2026 Code of Conduct & Values', 'People Operations', 'gs://patchamomma-505416-employee-ai-knowledge/company/code_of_conduct_2026.md', 'ALL', 'employee', 'POLICY', 'amanda.w@company.com', 'Core company values, inclusive culture, and workplace ethics.', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()),
+('DOC-ALL-001', 'Company Code of Conduct & Values', 'People Operations', 'gs://company-internal-knowledge/company/code_of_conduct_2026.md', 'ALL', 'employee', 'POLICY', 'amanda.w@company.com', 'Core company values, inclusive culture, and workplace ethics.', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()),
 ('DOC-ALL-002', 'Enterprise Python & Structured Logging Standards', 'Architecture Guild', 'gs://patchamomma-505416-employee-ai-knowledge/engineering/logging_standards_2026.md', 'ALL', 'employee', 'STANDARDS', 'priya.nair@company.com', 'Requirements for structured JSON logging and naked exception handling.', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()),
 ('DOC-PAY-001', 'Payments Microservice Architecture & Event Ledger Blueprint', 'Payments Architecture', 'gs://patchamomma-505416-employee-ai-knowledge/engineering/payments/architecture_blueprint.pdf', 'Payments', 'employee', 'ARCHITECTURE_SPEC', 'priya.nair@company.com', 'Confidential Payments transaction flow, idempotency keys, and database topology.', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()),
 ('DOC-PLT-001', 'Platform Kubernetes (GKE) Cluster Triage & Pod Recovery Runbook', 'Platform Infrastructure', 'gs://patchamomma-505416-employee-ai-knowledge/runbooks/kubernetes_cluster_triage.md', 'Platform', 'employee', 'RUNBOOK', 'alex.chen@company.com', 'Triage runbook for GKE cluster autoscaling, node repair, and CrashLoopBackOff.', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP()),
@@ -45,7 +45,7 @@ VALUES
 INSERT INTO `patchamomma-505416.employee_ai.knowledge_chunks`
 (chunk_id, document_id, chunk_index, content, team, access_level)
 VALUES
-('CHK-ALL-001-1', 'DOC-ALL-001', 0, '# Patchamomma 2026 Code of Conduct\nWe prioritize psychological safety, radical candor with empathy, and customer obsession.\nWorking hours are core-flexible (10am - 4pm local). Timesheets must be finalized by Friday 5pm.', 'ALL', 'employee'),
+('CHK-ALL-001-1', 'DOC-ALL-001', 0, '# Company Code of Conduct\nWe prioritize psychological safety, radical candor with empathy, and customer obsession.\nWorking hours are core-flexible (10am - 4pm local). Timesheets must be finalized by Friday 5pm.', 'ALL', 'employee'),
 ('CHK-ALL-002-1', 'DOC-ALL-002', 0, '# Corporate Coding Standards 2026\n1. Never use raw print(...) statements in production services. Always use logger.info(json.dumps(...)).\n2. All microservices communicate via Cloud Pub/Sub and Cloud SQL Postgres proxy with IAM auth.\n3. Functions must be fully type-hinted and pass ruff/mypy checks.', 'ALL', 'employee'),
 ('CHK-PAY-001-1', 'DOC-PAY-001', 0, '# Payments Architecture Blueprint\nThe Payments Gateway utilizes an event-sourced ledger on Cloud SQL PostgreSQL with read-replicas.\nTransactions require an Idempotency-Key header. Staging database URL is managed via Cloud SQL Proxy at 127.0.0.1:5432.\nVideo walkthrough: `gs://patchamomma-505416-employee-ai-knowledge/videos/onboarding/payments_deepdive.mp4` (Key timestamp: 18:45 for Cloud SQL Proxy setup).', 'Payments', 'employee'),
 ('CHK-PLT-001-1', 'DOC-PLT-001', 0, '# GKE Cluster Triage Runbook\nFor Pod CrashLoopBackOff events, execute `kubectl logs --tail=100 -n production`.\nIf nodes are non-responsive, verify Cloud NAT and VPC firewall rules before restarting node pools.', 'Platform', 'employee'),

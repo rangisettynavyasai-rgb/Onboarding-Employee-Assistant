@@ -1,7 +1,7 @@
 -- ============================================================================
--- Patchamomma 2026: Master Unified Knowledge Mesh & Telemetry Schemas
+-- Company AI Assistant: Master Unified Knowledge Mesh & Telemetry Schemas
 -- Production BigQuery DDL for Cloud Run Enterprise Backend
--- Dataset: employee_ai (Project: patchamomma-505416)
+-- Dataset: employee_ai
 -- ============================================================================
 
 -- Master Dataset

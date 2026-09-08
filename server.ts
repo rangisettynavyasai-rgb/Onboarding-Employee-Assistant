@@ -2,9 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
-import { AuthService, OnboardingService, OperationsService, KnowledgeService, ProactiveService, SessionService } from "./src/services.js";
-import { SupervisorAgent } from "./src/agents.js";
-import { EmployeeRecord, IncidentSeverity } from "./src/types.js";
+import { GoogleGenAI } from "@google/genai";
 import { callPythonBackend } from "./src/pythonBridge.js";
 
 const app = express();
@@ -13,76 +11,111 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
-// Extend express Request to hold authenticated employee
-interface AuthenticatedRequest extends Request {
-  employee?: EmployeeRecord;
+// Extend express Request to hold authenticated employee context from Python
+export interface AuthenticatedEmployee {
+  employee_id: string;
+  name?: string;
+  email?: string;
+  department?: string;
+  team?: string;
+  job_role?: string;
+  authorization_role?: string;
+  [key: string]: any;
 }
 
-// Authentication Middleware
-function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+interface AuthenticatedRequest extends Request {
+  employee?: AuthenticatedEmployee;
+}
+
+// Authentication Middleware powered by Python Backend AuthService
+async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     res.status(401).json({ detail: "Missing Authorization Bearer header." });
     return;
   }
 
-  const employee = AuthService.resolveEmployee(authHeader);
-  if (!employee) {
-    res.status(401).json({ detail: "Invalid or expired Google Identity token." });
-    return;
-  }
+  try {
+    const pyAuth = await callPythonBackend({
+      action: "resolve_employee",
+      identity: authHeader,
+    });
 
-  req.employee = employee;
-  next();
+    if (!pyAuth || pyAuth.error || !pyAuth.employee) {
+      res.status(401).json({ detail: "Invalid or expired Google Identity token." });
+      return;
+    }
+
+    req.employee = pyAuth.employee;
+    next();
+  } catch (err: any) {
+    res.status(401).json({ detail: "Authentication verification error: " + err.message });
+  }
 }
 
 // 1. Health Check
-app.get("/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    service: "Onboarding-Employee-Assistant",
-    runtime: "Node.js 22 LTS",
-    timestamp: new Date().toISOString(),
-  });
+app.get("/health", async (_req, res) => {
+  try {
+    const pyHealth = await callPythonBackend({ action: "health" });
+    res.json({
+      status: "ok",
+      service: "Onboarding-Employee-Assistant-Gateway",
+      python_backend: pyHealth,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e: any) {
+    res.json({
+      status: "degraded",
+      error: e.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
-// 1b. Direct Employee Sign-In (Corporate Directory & SSO)
-app.post("/api/v1/auth/login", (req, res) => {
-  const { identity } = req.body;
+// 1b. Direct Employee Sign-In (Corporate Directory & Password)
+app.post("/api/v1/auth/login", async (req, res) => {
+  const { identity, password } = req.body;
   if (!identity || typeof identity !== "string") {
-    res.status(400).json({ detail: "Email or Employee ID is required." });
+    res.status(400).json({ detail: "Work Email or Employee ID is required." });
     return;
   }
 
-  const employee = AuthService.resolveEmployee(identity);
-  if (!employee) {
-    res.status(401).json({ detail: "Invalid employee credentials or identity not found." });
-    return;
-  }
+  try {
+    const pyLogin = await callPythonBackend({
+      action: "login",
+      identity,
+      password: typeof password === "string" ? password : "",
+    });
 
-  res.json({
-    status: "authenticated",
-    token: identity,
-    employee: {
-      employee_id: employee.employee_id,
-      name: employee.name,
-      email: employee.email,
-      team: employee.team,
-      department: employee.department,
-      job_role: employee.job_role,
-      authorization_role: employee.authorization_role,
-      is_day_one: employee.is_day_one,
-    },
-  });
+    if (!pyLogin || pyLogin.error || !pyLogin.employee) {
+      res.status(401).json({ detail: pyLogin?.error || "Invalid employee credentials or identity not found." });
+      return;
+    }
+
+    res.json({
+      status: "authenticated",
+      token: pyLogin.token || identity,
+      employee: pyLogin.employee,
+    });
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || "Authentication service error" });
+  }
 });
 
 // 2. Proactive Landing Screen
-app.post("/api/v1/landing", requireAuth, (req: AuthenticatedRequest, res) => {
-  const landing = ProactiveService.generateLanding(req.employee!);
-  res.json(landing);
+app.post("/api/v1/landing", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const landing = await callPythonBackend({
+      action: "landing",
+      identity: req.employee!.employee_id,
+    });
+    res.json(landing);
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || "Failed to generate landing" });
+  }
 });
 
-// 3. Conversational Multi-Agent Hub
+// 3. Conversational Multi-Agent Hub (Powered by Gemini 3.6 Flash with Python Mesh Grounding)
 app.post("/api/v1/chat", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { message, session_id } = req.body;
@@ -91,49 +124,124 @@ app.post("/api/v1/chat", requireAuth, async (req: AuthenticatedRequest, res) => 
       return;
     }
 
-    const session = await SessionService.getOrCreateSession(req.employee!.employee_id, session_id);
-    session.history.push({ role: "user", content: message, timestamp: new Date().toISOString() });
-
-    let responseText = "";
-    let agentInvoked = "Supervisor Agent";
-    let suggestedActions = ["Coding Standards", "View Pending Tasks"];
-
+    const employee = req.employee!;
+    let contextChunks = "";
+    let checklistInfo = "";
     try {
-      const pyResult = await callPythonBackend({
-        action: "chat",
-        identity: req.employee!.employee_id,
-        message,
-      });
-      if (pyResult && pyResult.response) {
-        responseText = pyResult.response;
-        agentInvoked = pyResult.agent_invoked || "Python Supervisor Agent";
-        if (pyResult.suggested_actions) {
-          suggestedActions = pyResult.suggested_actions;
-        }
+      const [searchRes, checklistRes] = await Promise.all([
+        callPythonBackend({
+          action: "search_knowledge",
+          identity: employee.employee_id,
+          query: message,
+        }),
+        callPythonBackend({
+          action: "get_checklist",
+          identity: employee.employee_id,
+        }),
+      ]);
+
+      if (searchRes && searchRes.context) {
+        contextChunks = searchRes.context;
       }
-    } catch (pyErr) {
-      console.warn("Python backend chat failed, falling back to TS:", pyErr);
+      if (checklistRes && checklistRes.tasks) {
+        const pending = checklistRes.tasks.filter((t: any) => t.status !== "COMPLETED");
+        checklistInfo = `Onboarding Tasks: ${checklistRes.completed_count}/${checklistRes.total_count} completed. Next pending: ${pending.map((p: any) => p.title + " (" + p.task_id + ")").join(", ") || "None"}.`;
+      }
+    } catch (fetchErr: any) {
+      console.warn("Context fetch notice:", fetchErr.message);
     }
 
-    if (!responseText) {
-      const result = await SupervisorAgent.orchestrate(req.employee!, message);
-      responseText = result.response;
-      agentInvoked = result.agent_invoked;
-      suggestedActions = result.suggested_actions;
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const ai = new GoogleGenAI();
+        const systemPrompt = `You are the Company AI Assistant, an internal workplace assistant helping employees with onboarding, company runbooks, engineering standards, and daily operations.
+
+Employee Profile:
+- Name: ${employee.name || "Employee"}
+- ID: ${employee.employee_id}
+- Role: ${employee.job_role || "Team Member"}
+- Team: ${employee.team || "Engineering"}
+- Authorization Clearance: ${employee.authorization_role || "employee"}
+${checklistInfo}
+
+Company Operational Standards & Policies:
+- Core collaboration hours: 10:00 AM – 4:00 PM local time.
+- Weekly timesheets: Due every Friday by 5:00 PM for automated payroll processing.
+- Engineering Coding Standards: Zero raw print policy (never commit raw print or console.log). RFC-5424 structured JSON logging required. Cloud SQL Auth Proxy sidecar via 127.0.0.1:5432 with IAM authentication. Idempotency-Key headers required on mutable payment endpoints with 24-hour Redis TTL. Conventional Commits strictly enforced.
+- IT Support & Escalations: 3-tier routing: Primary Lead, Backup Lead (if OOO), or Escalation Channel.
+
+Authorized Knowledge Mesh Documentation:
+${contextChunks || "General company guidelines apply."}
+
+Critical Directives:
+1. Provide a direct, highly helpful, articulate, and accurate answer to the user query.
+2. Provide code snippets, command line examples, or step-by-step instructions where applicable.
+3. NEVER mention "Patchamomma". Always refer to "the company", "our team", or "Company".
+4. If asked about tasks, reference their actual onboarding tasks listed above.
+5. If asked about timesheets, explain the Friday 5:00 PM policy and note that they can submit via the Timesheet Status action.
+6. Keep formatting clean with clear markdown headings or bullet points where appropriate.
+7. Point to Person Escalation: If you do not have sufficient information in the knowledge base to answer the question with complete confidence, or if the employee asks to speak to a person, connect with a human, or contact their team leads, explicitly provide the Point-to-Person contact details:
+   - Assigned Onboarding Buddy: ${employee.assigned_buddy_name || "Priya Nair"} (${employee.assigned_buddy_email || "priya.nair@company.com"})
+   - Direct Reporting Manager: Sarah Jenkins (sarah.j@company.com)
+   - IT Systems Admin: Marcus Vance (marcus.v@company.com, #help-it)
+   - People Operations (HR): Amanda Walker (amanda.w@company.com, #people-ops)
+   Invite them to use the "Point of Contact" quick action in their dashboard.`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.6-flash",
+          contents: `${systemPrompt}\n\nEmployee Query: "${message}"`,
+        });
+
+        const replyText = response.text || "";
+        if (replyText.trim()) {
+          const suggested: string[] = [];
+          const lower = message.toLowerCase();
+          if (lower.includes("task") || lower.includes("onboard")) suggested.push("View Pending Tasks");
+          if (lower.includes("time") || lower.includes("hour")) suggested.push("Check Timesheet Status");
+          if (lower.includes("code") || lower.includes("log") || lower.includes("git")) suggested.push("Coding Standards");
+          if (lower.includes("person") || lower.includes("human") || lower.includes("contact") || lower.includes("buddy") || lower.includes("help") || lower.includes("who")) {
+            suggested.push("Point of Contact");
+          }
+          if (suggested.length === 0) {
+            suggested.push("Point of Contact", "Coding Standards", "Check Timesheet Status");
+          }
+
+          res.json({
+            response: replyText,
+            session_id: session_id || `sess-${Date.now()}`,
+            agent_invoked: "Company AI Assistant (Gemini 3.6)",
+            suggested_actions: suggested,
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+      } catch (geminiErr: any) {
+        console.warn("Gemini generation fallback:", geminiErr.message);
+      }
     }
 
-    session.history.push({ role: "assistant", content: responseText, timestamp: new Date().toISOString() });
-    await SessionService.saveSession(session);
+    // Fallback to Python multi-agent system
+    const pyResult = await callPythonBackend({
+      action: "chat",
+      identity: req.employee!.employee_id,
+      message,
+      session_id,
+    });
+
+    if (pyResult.error) {
+      res.status(500).json({ detail: pyResult.error });
+      return;
+    }
 
     res.json({
-      response: responseText,
-      session_id: session.session_id,
-      agent_invoked: agentInvoked,
-      suggested_actions: suggestedActions,
+      response: pyResult.response,
+      session_id: pyResult.session_id,
+      agent_invoked: pyResult.agent_invoked || "Supervisor Agent",
+      suggested_actions: pyResult.suggested_actions || [],
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
-    res.status(500).json({ detail: err.message || "Internal server error" });
+    res.status(500).json({ detail: err.message || "Chat agent service error" });
   }
 });
 
@@ -145,25 +253,17 @@ app.post("/api/v1/assistant/converse", requireAuth, async (req: AuthenticatedReq
       res.status(400).json({ detail: "Message is required." });
       return;
     }
-    const session = await SessionService.getOrCreateSession(req.employee!.employee_id, session_id);
-    session.history.push({ role: "user", content: message, timestamp: new Date().toISOString() });
-
-    const result = await SupervisorAgent.orchestrate(req.employee!, message);
-    session.history.push({ role: "assistant", content: result.response, timestamp: new Date().toISOString() });
-    await SessionService.saveSession(session);
-
-    res.json({
-      response: result.response,
-      session_id: session.session_id,
-      agent_invoked: result.agent_invoked,
-      suggested_actions: result.suggested_actions,
-      timestamp: new Date().toISOString(),
+    const pyResult = await callPythonBackend({
+      action: "chat",
+      identity: req.employee!.employee_id,
+      message,
+      session_id,
     });
+    res.json(pyResult);
   } catch (err: any) {
-    res.status(500).json({ detail: err.message || "Internal server error" });
+    res.status(500).json({ detail: err.message || "Chat agent service error" });
   }
 });
-
 
 // 4. Onboarding Status
 app.get("/api/v1/onboarding/my-status", requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -176,17 +276,10 @@ app.get("/api/v1/onboarding/my-status", requireAuth, async (req: AuthenticatedRe
       res.json(pyResult);
       return;
     }
-  } catch (e) {
-    console.warn("Python backend error for checklist, falling back to TS:", e);
-  }
-
-  // Fallback to TS
-  const checklist = OnboardingService.getChecklist(req.employee!.employee_id);
-  if (!checklist) {
     res.status(404).json({ detail: "Onboarding checklist not found." });
-    return;
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to fetch checklist" });
   }
-  res.json(checklist);
 });
 
 // 5. Complete Onboarding Task
@@ -207,84 +300,160 @@ app.post("/api/v1/onboarding/complete-task", requireAuth, async (req: Authentica
       res.json(pyResult.checklist);
       return;
     }
-  } catch (e) {
-    console.warn("Python backend error for complete_task:", e);
-  }
-
-  const success = OnboardingService.completeTask(req.employee!.employee_id, task_id);
-  if (!success) {
     res.status(400).json({ detail: "Task not found or already completed." });
-    return;
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to complete task" });
   }
-  const updated = OnboardingService.getChecklist(req.employee!.employee_id);
-  res.json(updated);
 });
 
 // 6. Team Onboarding Progress (Manager / HR)
-app.get("/api/v1/onboarding/team-progress", requireAuth, (req: AuthenticatedRequest, res) => {
-  const summary = OnboardingService.getTeamProgress(req.employee!);
-  res.json(summary);
+app.get("/api/v1/onboarding/team-progress", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const summary = await callPythonBackend({
+      action: "team_progress",
+      identity: req.employee!.employee_id,
+    });
+    res.json(summary);
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to fetch team progress" });
+  }
 });
 
 // 7. Knowledge Search
-app.get("/api/v1/knowledge/search", requireAuth, (req: AuthenticatedRequest, res) => {
+app.get("/api/v1/knowledge/search", requireAuth, async (req: AuthenticatedRequest, res) => {
   const query = (req.query.query as string) || "";
-  const chunks = KnowledgeService.searchAuthorized(req.employee!, query);
-  res.json({
-    query,
-    count: chunks.length,
-    chunks,
-  });
+  try {
+    const searchRes = await callPythonBackend({
+      action: "search_knowledge",
+      identity: req.employee!.employee_id,
+      query,
+    });
+    res.json(searchRes);
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to search knowledge base" });
+  }
 });
 
 // 7b. Knowledge Mesh Insights (Recent Documentation & Policy Updates)
-app.get("/api/v1/knowledge/insights", requireAuth, (req: AuthenticatedRequest, res) => {
-  const insights = KnowledgeService.getAuthorizedInsights(req.employee!);
-  res.json({
-    employee_id: req.employee!.employee_id,
-    team: req.employee!.team,
-    clearance: req.employee!.authorization_role,
-    total_insights: insights.length,
-    insights,
-    timestamp: new Date().toISOString(),
-  });
+app.get("/api/v1/knowledge/insights", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const insights = await callPythonBackend({
+      action: "get_insights",
+      identity: req.employee!.employee_id,
+    });
+    res.json(insights);
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to fetch insights" });
+  }
 });
 
-// 7c. Persistent Session History (Firestore Backed)
+// 7c. Persistent Session History
 app.get("/api/v1/session/history", requireAuth, async (req: AuthenticatedRequest, res) => {
   const sessionId = (req.query.session_id as string) || undefined;
-  const session = await SessionService.getOrCreateSession(req.employee!.employee_id, sessionId);
-  res.json({
-    session_id: session.session_id,
-    employee_id: session.employee_id,
-    created_at: session.created_at,
-    last_accessed_at: session.last_accessed_at,
-    message_count: session.history.length,
-    history: session.history,
-  });
+  try {
+    const session = await callPythonBackend({
+      action: "session_history",
+      identity: req.employee!.employee_id,
+      session_id: sessionId,
+    });
+    res.json(session);
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to fetch session history" });
+  }
 });
 
-
 // 8. Timesheets
-app.get("/api/v1/timesheets/my-status", requireAuth, (req: AuthenticatedRequest, res) => {
-  const status = OperationsService.getTimesheetStatus(req.employee!.employee_id);
-  res.json(status);
+app.get("/api/v1/timesheets/my-status", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const status = await callPythonBackend({
+      action: "timesheet_status",
+      identity: req.employee!.employee_id,
+    });
+    res.json(status);
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to fetch timesheet" });
+  }
+});
+
+// 8b. Submit Timesheet
+app.post("/api/v1/timesheets/submit", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { hours, notes } = req.body;
+    const pyResult = await callPythonBackend({
+      action: "submit_timesheet",
+      identity: req.employee!.employee_id,
+      hours: typeof hours === "number" ? hours : parseFloat(hours) || 40.0,
+      notes: notes || "",
+    });
+    res.json(pyResult);
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || "Failed to submit timesheet" });
+  }
+});
+
+// 8c. Knowledge Mesh Documents Catalog & Viewer
+app.get("/api/v1/documents/all", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const pyResult = await callPythonBackend({
+      action: "get_all_documents",
+      identity: req.employee!.employee_id,
+    });
+    res.json(pyResult);
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || "Failed to fetch documents" });
+  }
+});
+
+app.get("/api/v1/documents/:docId", requireAuth, async (req: AuthenticatedRequest, res) => {
+  const { docId } = req.params;
+  try {
+    const doc = await callPythonBackend({
+      action: "get_document",
+      identity: req.employee!.employee_id,
+      doc_id: docId,
+    });
+    if (doc && doc.error) {
+      res.status(403).json(doc);
+      return;
+    }
+    res.json(doc);
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || "Failed to fetch document" });
+  }
+});
+
+// 8d. Point to Person Escalation & Team Directory
+app.get("/api/v1/contacts/points-of-contact", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const contacts = await callPythonBackend({
+      action: "get_points_of_contact",
+      identity: req.employee!.employee_id,
+    });
+    res.json(contacts);
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || "Failed to fetch points of contact" });
+  }
 });
 
 // 9. Incidents
-app.post("/api/v1/incidents/create", requireAuth, (req: AuthenticatedRequest, res) => {
+app.post("/api/v1/incidents/create", requireAuth, async (req: AuthenticatedRequest, res) => {
   const { category, summary, severity } = req.body;
   if (!summary || summary.trim().length < 5) {
     res.status(400).json({ detail: "Summary must be at least 5 characters long." });
     return;
   }
-  const inc = OperationsService.createIncident(
-    req.employee!,
-    category || "Platform / General",
-    summary,
-    (severity as IncidentSeverity) || IncidentSeverity.MEDIUM
-  );
-  res.json(inc);
+  try {
+    const inc = await callPythonBackend({
+      action: "create_incident",
+      identity: req.employee!.employee_id,
+      category: category || "Platform / General",
+      summary,
+      severity: severity || "MEDIUM",
+    });
+    res.json(inc);
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to create incident" });
+  }
 });
 
 // Serve frontend assets
@@ -296,7 +465,13 @@ app.get("*", (_req, res) => {
   const indexPath = path.join(publicPath, "index.html");
   if (fs.existsSync(indexPath)) {
     let html = fs.readFileSync(indexPath, "utf-8");
-    const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || "";
+    let clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || "";
+    if (!clientId && fs.existsSync("firebase-applet-config.json")) {
+      try {
+        const cfg = JSON.parse(fs.readFileSync("firebase-applet-config.json", "utf-8"));
+        if (cfg.oAuthClientId) clientId = cfg.oAuthClientId;
+      } catch {}
+    }
     html = html.replace("__GOOGLE_CLIENT_ID__", clientId);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
@@ -308,3 +483,4 @@ app.get("*", (_req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Onboarding Employee Assistant server running on http://0.0.0.0:${PORT}`);
 });
+

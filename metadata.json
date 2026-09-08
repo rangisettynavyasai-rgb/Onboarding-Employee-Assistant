@@ -1,6 +1,6 @@
 {
   "name": "Onboarding Employee Assistant",
-  "description": "Secure AI-Powered Onboarding & Employee Assistant Framework grounded in Google Cloud Platform and Google Identity.",
+  "description": "Unified internal workspace for employee onboarding, team knowledge, runbooks, and daily operations.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

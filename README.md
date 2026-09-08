@@ -1,54 +1,88 @@
-# Patchamomma 2026: Enterprise AI Onboarding & Employee Assistant Framework
+# Enterprise AI Onboarding & Employee Assistant Framework
 
+[![Python](https://img.shields.io/badge/Python-3.10-yellow.svg)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-22_LTS-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Google Cloud Run](https://img.shields.io/badge/Google%20Cloud-Cloud%20Run-blue.svg)](https://cloud.google.com/run)
 [![BigQuery](https://img.shields.io/badge/GCP-BigQuery%20Knowledge%20Mesh-orange.svg)](https://cloud.google.com/bigquery)
 [![Gemini 2.5 Flash](https://img.shields.io/badge/Google%20GenAI-Gemini%202.5%20Flash-purple.svg)](https://ai.google.dev/)
 
-Production-grade **Multi-Agent Enterprise AI Assistant** built with **TypeScript**, **Node.js 22 LTS**, and **Express**, engineered for deployment to **Google Cloud Run**. The system integrates **Google Identity Services (GIS)**, **Gemini 2.5 Flash** (via `@google/genai`), a **BigQuery Knowledge Mesh**, and **Google Cloud Storage (GCS)** assets.
+Production-grade **Multi-Agent Enterprise AI Assistant** featuring a high-performance **Python Backend** (`backend/`), typed **UI TypeScript** frontend (`src/ui/`), and **Express Gateway** (`server.ts`). The system integrates **Google Identity Services (GIS)**, **Gemini 2.5 Flash** (via `@google/genai`), a **BigQuery Knowledge Mesh**, and **Google Cloud Storage (GCS)** assets.
 
 ---
 
-## 🏛️ System Architecture
+## 🏛️ Modernized System Architecture
 
 ```
-                                [ Incoming User Request ]
+                                [ Incoming Web User ]
                                            │
                                            ▼
-                             ┌───────────────────────────┐
-                             │ Google Identity (GIS/IAP) │ (Extracts verified sub & email)
-                             └─────────────┬─────────────┘
-                                           │ AuthenticatedPrincipal
+                      ┌─────────────────────────────────────────┐
+                      │    UI TypeScript Application (Browser)   │
+                      │  src/ui/app.ts ──> public/app.js bundle │
+                      └────────────────────┬────────────────────┘
+                                           │ HTTP/REST (Port 3000)
                                            ▼
-                             ┌───────────────────────────┐
-                             │  Employee Identity Lookup │ (sub -> internal EmployeeRecord)
-                             └─────────────┬─────────────┘
-                                           │ EmployeeContext (Role, Team, Track, Clearance)
+                      ┌─────────────────────────────────────────┐
+                      │       Express Gateway (Node.js 22)      │
+                      │   Route routing & Google OAuth hosting  │
+                      └────────────────────┬────────────────────┘
+                                           │ Zero-copy JSON RPC Bridge
                                            ▼
-                             ┌───────────────────────────┐
-                             │    Session & Security     │ (Perimeter enforcement & session binding)
-                             └─────────────┬─────────────┘
+                      ┌─────────────────────────────────────────┐
+                      │   Enterprise Python Backend (3.10)      │
+                      │          backend/runner.py              │
+                      └─────────────┬─────────────┬─────────────┘
+                                    │             │
+                    ┌───────────────┘             └───────────────┐
+                    ▼                                             ▼
+     ┌─────────────────────────────┐               ┌─────────────────────────────┐
+     │      Domain Services        │               │     Multi-Agent Subsystem   │
+     │    backend/services.py      │               │      backend/agents.py      │
+     ├─────────────────────────────┤               ├─────────────────────────────┤
+     │ • AuthService               │               │ • SupervisorAgent           │
+     │ • OnboardingService         │               │ • OnboardingSpecialistAgent │
+     │ • OperationsService         │               │ • OperationsAgent           │
+     │ • KnowledgeService          │               │ • KnowledgeMeshAgent        │
+     │ • ProactiveService          │               │ • CodeMentorAgent           │
+     │ • SessionService            │               │ • SecurityGuardAgent        │
+     └─────────────────────────────┘               └─────────────────────────────┘
+                    │                                             │
+                    └──────────────────────┬──────────────────────┘
                                            │
                                            ▼
-                             ┌───────────────────────────┐
-                             │     Supervisor Agent      │ (Intent classification & LLM Orchestration)
-                             └─────────────┬─────────────┘
-                                           │
-        ┌───────────────────┬──────────────┼───────────────────┬───────────────────┐
-        ▼                   ▼              ▼                   ▼                   ▼
-┌───────────────┐   ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│  Onboarding   │   │  Operations   │ │   Knowledge   │ │  Code Mentor  │ │  Gemini 2.5   │
-│  Specialist   │   │     Agent     │ │  Mesh Agent   │ │     Agent     │ │     Flash     │
-└───────┬───────┘   └───────┬───────┘ └───────┬───────┘ └───────┬───────┘ └───────┬───────┘
-        │                   │                 │                 │                 │
-        ▼                   ▼                 ▼                 ▼                 ▼
- ┌─────────────┐     ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
- │ Day-1 Tasks │     │ Timesheets  │   │ Pre-Filter  │   │ JSON Logger │   │ Contextual  │
- │ & Checklists│     │ & Incident  │   │  ACL Mesh   │   │ & Cloud SQL │   │ Synthesis   │
- │   Rollup    │     │ Escalations │   │ (BQ + GCS)  │   │    Proxy    │   │  Responses  │
- └─────────────┘     └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
+                            ┌─────────────────────────────┐
+                            │    ACL Policy & Data Mesh   │
+                            │  backend/auth_policy.py     │
+                            │  backend/data.py            │
+                            │  backend/models.py          │
+                            │  backend/firestore.py       │
+                            └─────────────────────────────┘
 ```
+
+### Archived Legacy Implementations
+In accordance with the transition to pure Python backend domain logic:
+- All legacy TypeScript backend files (`src/services.ts`, `src/agents.ts`, `src/data.ts`, `src/types.ts`, `src/firestore.ts`) have been moved to `/older_version/src/`.
+- All operational routes (`/api/v1/auth`, `/api/v1/landing`, `/api/v1/chat`, `/api/v1/onboarding/*`, `/api/v1/knowledge/*`, `/api/v1/timesheets/*`, `/api/v1/incidents/*`, `/api/v1/session/history`) delegate strictly to `backend.runner`, `backend.services`, and `backend.firestore`.
+
+---
+
+## 📋 Full Functionality Coverage Matrix
+
+| Feature Domain | Endpoint / RPC Action | Python Backend Implementation | Status |
+| :--- | :--- | :--- | :--- |
+| **Authentication & SSO** | `/api/v1/auth/login`, `resolve_employee` | `AuthService.resolve_employee` | ✅ 100% Tested |
+| **Proactive Guidance** | `/api/v1/landing` | `ProactiveService.generate_landing` | ✅ 100% Tested |
+| **Multi-Agent Chat** | `/api/v1/chat`, `converse` | `SupervisorAgent.route` + `SessionService` | ✅ 100% Tested |
+| **Onboarding Checklists**| `/api/v1/onboarding/my-status` | `OnboardingService.get_checklist` | ✅ 100% Tested |
+| **Task Completion** | `/api/v1/onboarding/complete-task` | `OnboardingService.complete_task` | ✅ 100% Tested |
+| **Manager Rollup** | `/api/v1/onboarding/team-progress`| `OnboardingService.get_team_progress` | ✅ 100% Tested |
+| **Knowledge Mesh Search**| `/api/v1/knowledge/search` | `KnowledgeService.search_authorized` | ✅ 100% Tested |
+| **Document Insights** | `/api/v1/knowledge/insights` | `KnowledgeService.get_authorized_insights` | ✅ 100% Tested |
+| **Timesheets Status** | `/api/v1/timesheets/my-status` | `OperationsService.get_timesheet_status` | ✅ 100% Tested |
+| **Incident Management** | `/api/v1/incidents/create` | `OperationsService.create_incident` | ✅ 100% Tested |
+| **Escalation Routing** | `resolve_escalation` | `OperationsService.resolve_escalation` | ✅ 100% Tested |
+| **Persistent Sessions** | `/api/v1/session/history` | `SessionService.get_or_create_session` | ✅ 100% Tested |
 
 ---
 

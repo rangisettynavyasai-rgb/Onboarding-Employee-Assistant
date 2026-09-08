@@ -1,20 +1,33 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null;
-    }
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     match /sessions/{sessionId} {
-      allow read, write: if isSignedIn() && isValidId(sessionId);
+      allow read, write: if isValidId(sessionId);
+    }
+
+    match /checklists/{employeeId} {
+      allow read, write: if isValidId(employeeId);
+    }
+
+    match /timesheets/{timesheetId} {
+      allow read, write: if isValidId(timesheetId);
+    }
+
+    match /incidents/{incidentId} {
+      allow read, write: if isValidId(incidentId);
+    }
+
+    match /employees/{employeeId} {
+      allow read, write: if isValidId(employeeId);
     }
 
     match /knowledge_insights/{insightId} {
-      allow read: if isSignedIn() && isValidId(insightId);
-      allow write: if isSignedIn() && isValidId(insightId);
+      allow read, write: if isValidId(insightId);
     }
   }
 }
+

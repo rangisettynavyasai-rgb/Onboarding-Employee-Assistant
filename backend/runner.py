@@ -1,115 +1,32 @@
 #!/usr/bin/env python3
 """
-Patchamomma 2026: Python Backend CLI & RPC Dispatcher
-Accepts JSON payload on stdin, runs authorization & agent logic in pure Python, returns JSON on stdout.
+Company AI Assistant: Python Backend CLI & RPC Dispatcher
+Accepts JSON payload on stdin, executes domain services and multi-agent logic in pure Python, returns JSON on stdout.
 """
 import sys
 import json
 from typing import Dict, Any
 
 from backend.models import (
-    EmployeeRecord, AuthorizationRole, TaskStatus
+    EmployeeRecord, AuthorizationRole, TaskStatus, IncidentSeverity
 )
-from backend.data import EMPLOYEES, ONBOARDING_TASKS, KNOWLEDGE_CATALOG
-from backend.auth_policy import AuthPolicy
+from backend.services import (
+    AuthService,
+    OnboardingService,
+    OperationsService,
+    KnowledgeService,
+    ProactiveService,
+    SessionService,
+)
 from backend.agents import SupervisorAgent
-
-def resolve_employee(identity: str) -> EmployeeRecord:
-    clean = identity.replace("Bearer ", "").strip()
-    
-    # 1. Match employee_id
-    if clean in EMPLOYEES:
-        return EMPLOYEES[clean]
-    
-    # 2. Match email
-    for emp in EMPLOYEES.values():
-        if emp.email.lower() == clean.lower():
-            return emp
-            
-    # 3. Direct mock token
-    token_map = {
-        "mock-google-token-rahul": "EMP-2026-001",
-        "mock-google-token-maya": "EMP-2026-002",
-        "mock-google-token-amanda": "EMP-2026-009",
-        "mock-google-token-sarah": "EMP-2026-010",
-    }
-    if clean in token_map:
-        return EMPLOYEES[token_map[clean]]
-
-    # 4. Fallback or new corporate email provisioning
-    if "@" in clean:
-        emp_id = f"EMP-{abs(hash(clean)) % 1000000:06d}"
-        prefix = clean.split("@")[0]
-        name = prefix.replace(".", " ").title()
-        new_emp = EmployeeRecord(
-            employee_id=emp_id,
-            google_subject=f"sub-{clean}",
-            email=clean,
-            name=name,
-            department="Engineering",
-            team="Payments",
-            job_role="Software Engineer",
-            authorization_role=AuthorizationRole.EMPLOYEE,
-            manager_id="EMP-2026-010",
-            location="San Francisco, CA",
-            joining_date="2026-09-01",
-            onboarding_status="IN_PROGRESS",
-            is_day_one=False,
-            assigned_buddy_name="Priya Nair",
-            assigned_buddy_email="priya.nair@company.com",
-            onboarding_track="Backend"
-        )
-        EMPLOYEES[emp_id] = new_emp
-        return new_emp
-
-    # Default fallback
-    return EMPLOYEES["EMP-2026-001"]
-
-def get_checklist_for_employee(employee: EmployeeRecord) -> Dict[str, Any]:
-    tasks = ONBOARDING_TASKS.get(employee.employee_id)
-    if not tasks:
-        # Default starter tasks
-        tasks = [
-            ONBOARDING_TASKS["EMP-2026-001"][0],
-            ONBOARDING_TASKS["EMP-2026-001"][1],
-        ]
-        ONBOARDING_TASKS[employee.employee_id] = tasks
-
-    # Calculate due dates and overdue statuses relative to joining_date and current time (2026-09-07)
-    for t in tasks:
-        t.calculate_due(employee.joining_date)
-
-    completed_count = sum(1 for t in tasks if t.status == TaskStatus.COMPLETED)
-    pending_tasks = [t for t in tasks if t.status != TaskStatus.COMPLETED]
-    next_task = pending_tasks[0].to_dict() if pending_tasks else None
-
-    return {
-        "employee_id": employee.employee_id,
-        "track": employee.onboarding_track,
-        "tasks": [t.to_dict() for t in tasks],
-        "completed_count": completed_count,
-        "total_count": len(tasks),
-        "next_pending_task": next_task,
-    }
-
-def complete_task(employee: EmployeeRecord, task_id: str) -> Dict[str, Any]:
-    tasks = ONBOARDING_TASKS.get(employee.employee_id, [])
-    found = False
-    for t in tasks:
-        if t.task_id == task_id:
-            t.status = TaskStatus.COMPLETED
-            t.completed_at = "2026-09-07T11:00:00Z"
-            t.is_overdue = False
-            found = True
-            break
-    return {
-        "success": found,
-        "checklist": get_checklist_for_employee(employee)
-    }
 
 def main():
     try:
-        raw_input = sys.stdin.read()
+        if len(sys.argv) > 1 and sys.argv[1].strip():
+            raw_input = sys.argv[1]
+        else:
+            raw_input = sys.stdin.read()
+
         if not raw_input.strip():
             print(json.dumps({"error": "Empty input"}))
             return
@@ -118,38 +35,165 @@ def main():
         action = payload.get("action")
         identity = payload.get("identity") or payload.get("token") or "EMP-2026-001"
 
-        employee = resolve_employee(identity)
+        employee = AuthService.resolve_employee(identity)
+        if not employee and action not in ["health"]:
+            print(json.dumps({"error": "Unauthorized: Unable to resolve employee identity"}))
+            return
 
-        if action == "resolve_employee":
+        if action == "health":
+            output = {
+                "status": "ok",
+                "service": "Onboarding-Employee-Assistant-Python-Backend",
+                "runtime": "Python 3.10",
+            }
+        elif action == "resolve_employee" or action == "login":
+            password = payload.get("password")
+            if action == "login" and password is not None:
+                auth_emp = AuthService.authenticate_credentials(identity, password)
+                if not auth_emp:
+                    print(json.dumps({"error": "Invalid corporate credentials or password"}))
+                    return
+                employee = auth_emp
             output = {
                 "status": "authenticated",
                 "employee": employee.to_dict()
             }
+        elif action == "landing":
+            output = ProactiveService.generate_landing(employee)
         elif action == "chat":
             message = payload.get("message", "")
+            session_id = payload.get("session_id")
+            
+            # Record user turn in persistent session
+            if session_id:
+                SessionService.append_message(session_id, employee.employee_id, "user", message)
+
             result = SupervisorAgent.route(employee, message)
+            resp_text = result.get("response", "")
+            agent_name = result.get("agent", "Supervisor Agent")
+            suggested = result.get("suggested_actions", [])
+
+            # Record assistant turn in persistent session
+            if session_id:
+                SessionService.append_message(session_id, employee.employee_id, "assistant", resp_text, agent_name)
+
             output = {
-                "response": result["response"],
-                "agent_invoked": result["agent"],
-                "suggested_actions": result.get("suggested_actions", []),
+                "response": resp_text,
+                "agent_invoked": agent_name,
+                "suggested_actions": suggested,
+                "session_id": session_id or f"sess-{employee.employee_id.lower()}",
                 "employee_id": employee.employee_id,
             }
         elif action == "get_checklist":
-            output = get_checklist_for_employee(employee)
+            output = OnboardingService.get_checklist(employee.employee_id)
         elif action == "complete_task":
             task_id = payload.get("task_id", "")
-            output = complete_task(employee, task_id)
+            success = OnboardingService.complete_task(employee.employee_id, task_id)
+            output = {
+                "success": success,
+                "checklist": OnboardingService.get_checklist(employee.employee_id)
+            }
+        elif action == "team_progress":
+            output = OnboardingService.get_team_progress(employee)
         elif action == "search_knowledge":
             query = payload.get("query", "")
-            result = SupervisorAgent.route(employee, query)
-            output = result
+            chunks = KnowledgeService.search_authorized(employee, query)
+            output = {
+                "query": query,
+                "count": len(chunks),
+                "chunks": [c.to_dict() for c in chunks],
+                "context": KnowledgeService.format_context(employee, chunks, query)
+            }
+        elif action == "get_insights":
+            insights = KnowledgeService.get_authorized_insights(employee)
+            output = {
+                "employee_id": employee.employee_id,
+                "team": employee.team,
+                "clearance": employee.authorization_role.value if isinstance(employee.authorization_role, AuthorizationRole) else employee.authorization_role,
+                "total_insights": len(insights),
+                "insights": insights,
+            }
+        elif action == "timesheet_status":
+            output = OperationsService.get_timesheet_status(employee.employee_id)
+        elif action == "submit_timesheet":
+            hours = float(payload.get("hours", 40.0))
+            notes = payload.get("notes", "")
+            output = OperationsService.submit_timesheet(employee.employee_id, hours, notes)
+        elif action == "get_document":
+            doc_id = payload.get("doc_id", "")
+            doc = KnowledgeService.get_document(employee, doc_id)
+            if doc:
+                output = doc
+            else:
+                output = {"error": f"Document {doc_id} not found or restricted"}
+        elif action == "get_all_documents":
+            output = {
+                "documents": KnowledgeService.get_all_documents(employee)
+            }
+        elif action == "create_incident":
+            category = payload.get("category", "Platform / General")
+            summary = payload.get("summary", "")
+            sev_str = payload.get("severity", "MEDIUM").upper()
+            sev = IncidentSeverity[sev_str] if sev_str in IncidentSeverity.__members__ else IncidentSeverity.MEDIUM
+            output = OperationsService.create_incident(employee, category, summary, sev)
+        elif action == "resolve_escalation":
+            domain = payload.get("domain", employee.team)
+            output = OperationsService.resolve_escalation(domain)
+        elif action in ["get_points_of_contact", "get_contacts", "point_to_person"]:
+            access_token = payload.get("access_token")
+            output = OperationsService.get_points_of_contact(employee, access_token)
+        elif action in ["session_history", "get_session_history"]:
+            session_id = payload.get("session_id")
+            session = SessionService.get_or_create_session(employee.employee_id, session_id)
+            output = session.to_dict()
+        elif action == "record_chat_turn":
+            session_id = payload.get("session_id") or f"sess-{employee.employee_id.lower()}"
+            user_msg = payload.get("user_message", "")
+            asst_msg = payload.get("assistant_message", "")
+            agent = payload.get("agent", "Company AI Assistant (Gemini 3.6)")
+            if user_msg:
+                SessionService.append_message(session_id, employee.employee_id, "user", user_msg)
+            if asst_msg:
+                SessionService.append_message(session_id, employee.employee_id, "assistant", asst_msg, agent)
+            session = SessionService.get_or_create_session(employee.employee_id, session_id)
+            output = {"success": True, "session": session.to_dict()}
+        elif action == "register_google_profile":
+            email = payload.get("email", "")
+            name = payload.get("name", "")
+            sub = payload.get("sub", "")
+            picture = payload.get("picture", "")
+            emp = AuthService.register_google_profile(email, name, sub, picture)
+            output = emp.to_dict()
+        elif action == "calendar_ooo":
+            access_token = payload.get("access_token")
+            from backend.calendar_service import CalendarService
+            output = CalendarService.get_out_of_office_status(access_token)
+        elif action == "integration_status":
+            from backend.jira_service import JiraService
+            from backend.salesforce_service import SalesforceService
+            from backend.calendar_service import CalendarService
+            access_token = payload.get("access_token")
+            output = {
+                "jira": {
+                    "site_url": JiraService.get_site_url(),
+                    "configured": JiraService.is_configured(),
+                    "project_key": JiraService.PROJECT_KEY,
+                },
+                "salesforce": {
+                    "instance_url": SalesforceService.get_instance_url(),
+                    "configured": SalesforceService.is_configured(),
+                },
+                "calendar": CalendarService.get_out_of_office_status(access_token),
+            }
         else:
             output = {"error": f"Unknown action: {action}"}
 
         print(json.dumps(output))
 
     except Exception as e:
-        print(json.dumps({"error": str(e)}))
+        import traceback
+        print(json.dumps({"error": str(e), "traceback": traceback.format_exc()}))
 
 if __name__ == "__main__":
     main()
+
