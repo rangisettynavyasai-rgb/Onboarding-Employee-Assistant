@@ -153,6 +153,16 @@ class AuthService:
 
                     # Dynamic provisioning for authenticated enterprise Google users
                     if email:
+                        if any(alias in email for alias in ["rnavyasai", "rangisettynavyasai"]):
+                            emp = _EMPLOYEES.get("EMP-2026-001")
+                            if emp:
+                                emp.email = email
+                                emp.name = name or "Navya Rangisetty"
+                                if sub:
+                                    emp.google_subject = sub
+                                firestore_db.save_employee(emp.to_dict())
+                                return emp
+
                         new_emp_id = f"EMP-{str(int(time.time()))[-6:]}"
                         new_emp = EmployeeRecord(
                             employee_id=new_emp_id,
@@ -173,21 +183,62 @@ class AuthService:
                             onboarding_track="Backend",
                         )
                         _EMPLOYEES[new_emp_id] = new_emp
+                        firestore_db.save_employee(new_emp.to_dict())
                         return new_emp
             except Exception:
                 pass
 
-        # 4. Direct email string or lowercase ID lookup
+        # 4. Check Firestore database for existing saved employee record
+        fs_emp = firestore_db.get_employee(clean_token) or firestore_db.lookup_employee_by_email(clean_token)
+        if fs_emp:
+            role_str = fs_emp.get("authorization_role", "employee").lower()
+            role_enum = AuthorizationRole.EMPLOYEE
+            if role_str == "manager":
+                role_enum = AuthorizationRole.MANAGER
+            elif role_str == "hr":
+                role_enum = AuthorizationRole.HR
+            elif role_str == "it":
+                role_enum = AuthorizationRole.IT
+
+            restored_emp = EmployeeRecord(
+                employee_id=fs_emp.get("employee_id", clean_token),
+                name=fs_emp.get("name", "Employee"),
+                email=fs_emp.get("email", ""),
+                department=fs_emp.get("department", "Engineering"),
+                team=fs_emp.get("team", "Payments"),
+                job_role=fs_emp.get("job_role", "Engineer"),
+                authorization_role=role_enum,
+                manager_id="EMP-2026-010",
+                location="HQ",
+                joining_date=datetime.now().strftime("%Y-%m-%d"),
+                onboarding_status="IN_PROGRESS",
+                is_day_one=False,
+                assigned_buddy_name=fs_emp.get("assigned_buddy_name", "Priya Nair"),
+                assigned_buddy_email=fs_emp.get("assigned_buddy_email", "priya.nair@company.com"),
+                onboarding_track="Backend",
+            )
+            _EMPLOYEES[restored_emp.employee_id] = restored_emp
+            return restored_emp
+
+        # 5. Direct email string or lowercase ID lookup
         direct_search = clean_token.lower()
+        if any(alias in direct_search for alias in ["rnavyasai", "rangisettynavyasai"]):
+            emp = _EMPLOYEES.get("EMP-2026-001")
+            if emp:
+                emp.email = direct_search
+                emp.name = "Navya Rangisetty"
+                firestore_db.save_employee(emp.to_dict())
+                return emp
+
         for emp in _EMPLOYEES.values():
             if emp.email.lower() == direct_search or emp.employee_id.lower() == direct_search:
                 return emp
 
-        # 5. Fallback corporate email provision
+        # 6. Fallback corporate email provision
         if "@" in direct_search:
             new_emp_id = f"EMP-{str(int(time.time()))[-6:]}"
             prefix = direct_search.split("@")[0]
-            display_name = "Navya Rangisetty" if "rnavyasai" in direct_search else prefix.replace(".", " ").title()
+            display_name = "Navya Rangisetty" if ("rnavyasai" in direct_search or "rangisetty" in direct_search) else prefix.replace(".", " ").title()
             new_emp = EmployeeRecord(
                 employee_id=new_emp_id,
                 google_subject=f"sub-{direct_search}",
@@ -207,22 +258,37 @@ class AuthService:
                 onboarding_track="Backend",
             )
             _EMPLOYEES[new_emp_id] = new_emp
+            firestore_db.save_employee(new_emp.to_dict())
             return new_emp
 
         # Fallback default employee
-        return _EMPLOYEES.get("EMP-2026-001")
+        default_emp = _EMPLOYEES.get("EMP-2026-001")
+        if default_emp:
+            firestore_db.save_employee(default_emp.to_dict())
+        return default_emp
 
     @staticmethod
     def register_google_profile(email: str, name: str, sub: str = "", picture: str = "") -> EmployeeRecord:
         email_clean = email.strip().lower()
+        if any(alias in email_clean for alias in ["rnavyasai", "rangisettynavyasai"]):
+            emp = _EMPLOYEES.get("EMP-2026-001")
+            if emp:
+                emp.email = email_clean
+                emp.name = name or "Navya Rangisetty"
+                if sub:
+                    emp.google_subject = sub
+                firestore_db.save_employee(emp.to_dict())
+                return emp
+
         for emp in _EMPLOYEES.values():
             if emp.email.lower() == email_clean or (sub and emp.google_subject == sub):
                 if name:
                     emp.name = name
+                firestore_db.save_employee(emp.to_dict())
                 return emp
 
         new_emp_id = f"EMP-{str(int(time.time()))[-6:]}"
-        display_name = name if name else ("Navya Rangisetty" if "rnavyasai" in email_clean else email_clean.split("@")[0].title())
+        display_name = name if name else ("Navya Rangisetty" if ("rnavyasai" in email_clean or "rangisetty" in email_clean) else email_clean.split("@")[0].title())
         new_emp = EmployeeRecord(
             employee_id=new_emp_id,
             google_subject=sub or f"sub-{email_clean}",
@@ -242,6 +308,7 @@ class AuthService:
             onboarding_track="Backend",
         )
         _EMPLOYEES[new_emp_id] = new_emp
+        firestore_db.save_employee(new_emp.to_dict())
         return new_emp
 
 

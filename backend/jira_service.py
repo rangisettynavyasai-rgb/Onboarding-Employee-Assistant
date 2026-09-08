@@ -11,14 +11,28 @@ import time
 import urllib.request
 import urllib.error
 from typing import Dict, Any, Optional
+from backend.config import get_config_val
 
 class JiraService:
-    @staticmethod
-    def get_status() -> Dict[str, Any]:
-        host = os.environ.get("JIRA_HOST", "").strip()
+    PROJECT_KEY = str(get_config_val("JIRA_PROJECT_KEY", "OPS")).strip()
+
+    @classmethod
+    def is_configured(cls) -> bool:
+        host = str(get_config_val("JIRA_HOST", "")).strip()
         email = os.environ.get("JIRA_EMAIL", "").strip()
         has_token = bool(os.environ.get("JIRA_API_TOKEN", "").strip())
-        project_key = os.environ.get("JIRA_PROJECT_KEY", "OPS").strip()
+        return bool(host and email and has_token)
+
+    @classmethod
+    def get_site_url(cls) -> str:
+        return str(get_config_val("JIRA_HOST", "")).strip().rstrip("/") or "https://jira.company.internal"
+
+    @staticmethod
+    def get_status() -> Dict[str, Any]:
+        host = str(get_config_val("JIRA_HOST", "")).strip()
+        email = os.environ.get("JIRA_EMAIL", "").strip()
+        has_token = bool(os.environ.get("JIRA_API_TOKEN", "").strip())
+        project_key = str(get_config_val("JIRA_PROJECT_KEY", "OPS")).strip()
 
         configured = bool(host and email and has_token)
         return {

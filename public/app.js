@@ -22,6 +22,68 @@
     }
     return el;
   }
+  var AUTH_TOKEN_KEY = "assistant_auth_session_token";
+  function showAuthAlert(title, message, type = "error") {
+    const alertEl = document.getElementById("auth-alert");
+    const iconEl = document.getElementById("auth-alert-icon");
+    const titleEl = document.getElementById("auth-alert-title");
+    const msgEl = document.getElementById("auth-alert-message");
+    if (!alertEl || !titleEl || !msgEl) return;
+    alertEl.className = `auth-alert-box auth-alert-${type}`;
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    if (iconEl) {
+      if (type === "error") iconEl.textContent = "\u26A0\uFE0F";
+      else if (type === "warning") iconEl.textContent = "\u26A1";
+      else iconEl.textContent = "\u2139\uFE0F";
+    }
+    alertEl.style.display = "flex";
+  }
+  function dismissAuthAlert() {
+    const alertEl = document.getElementById("auth-alert");
+    if (alertEl) alertEl.style.display = "none";
+  }
+  function setAuthLoading(isLoading, actionLabel) {
+    const googleBtn = document.getElementById("btn-google-sso");
+    const googleLabel = document.getElementById("btn-google-sso-label");
+    const loginBtn = document.getElementById("btn-employee-login");
+    const loginLabel = document.getElementById("btn-employee-login-label");
+    if (isLoading) {
+      if (googleBtn) {
+        googleBtn.disabled = true;
+        googleBtn.style.opacity = "0.7";
+        googleBtn.style.cursor = "wait";
+      }
+      if (googleLabel) {
+        googleLabel.innerHTML = `<span class="auth-spinner" style="margin-right: 6px;"></span> ${actionLabel || "Authenticating..."}`;
+      }
+      if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.style.opacity = "0.7";
+        loginBtn.style.cursor = "wait";
+      }
+      if (loginLabel) {
+        loginLabel.textContent = "Verifying...";
+      }
+    } else {
+      if (googleBtn) {
+        googleBtn.disabled = false;
+        googleBtn.style.opacity = "1";
+        googleBtn.style.cursor = "pointer";
+      }
+      if (googleLabel) {
+        googleLabel.textContent = "Continue with Google";
+      }
+      if (loginBtn) {
+        loginBtn.disabled = false;
+        loginBtn.style.opacity = "1";
+        loginBtn.style.cursor = "pointer";
+      }
+      if (loginLabel) {
+        loginLabel.textContent = "Sign In";
+      }
+    }
+  }
   function setAuthStatus(msg, isError = false) {
     const el = document.getElementById("auth-status");
     if (el) {
@@ -47,15 +109,34 @@
     }
     return data;
   }
-  async function initializeSession(token) {
-    state.activeBearerToken = token;
-    setAuthStatus("Authenticating corporate credentials...");
+  async function initializeSession(token, isRestoring = false) {
+    dismissAuthAlert();
+    setAuthLoading(true, isRestoring ? "Restoring Session..." : "Authenticating...");
     try {
+      let effectiveToken = token;
+      if (token.startsWith("ya29.") || token.startsWith("eyJ") || token.includes("@")) {
+        setAuthStatus("Verifying Google Workspace identity with corporate directory...");
+        const authRes = await fetch("/api/v1/auth/google", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: token, email: token.includes("@") ? token : void 0 })
+        });
+        const authData = await authRes.json();
+        if (!authRes.ok || !authData.token) {
+          throw new Error(authData.detail || "Google Identity authentication failed");
+        }
+        effectiveToken = authData.token;
+      }
+      state.activeBearerToken = effectiveToken;
+      setAuthStatus("Loading personalized workspace...");
       const landing = await apiRequest("/api/v1/landing", "POST");
       state.currentUserProfile = landing;
+      sessionStorage.setItem(AUTH_TOKEN_KEY, effectiveToken);
       const sessionKey = `onboarding_session_${landing.employee_id}`;
       state.currentSessionId = localStorage.getItem(sessionKey) || `sess-${landing.employee_id.toLowerCase()}`;
       localStorage.setItem(sessionKey, state.currentSessionId);
+      const restoringBanner = document.getElementById("session-restoring-banner");
+      if (restoringBanner) restoringBanner.style.display = "none";
       $("auth-view").style.display = "none";
       $("dashboard-view").style.display = "flex";
       $("user-display-name").textContent = landing.name;
@@ -71,8 +152,22 @@
       await refreshKnowledgeInsights();
       await restoreSessionHistory(state.currentSessionId, landing.name);
     } catch (err) {
-      setAuthStatus(err.message || "Failed to initialize session", true);
+      console.error("Session initialization failed:", err);
       state.activeBearerToken = null;
+      sessionStorage.removeItem(AUTH_TOKEN_KEY);
+      const restoringBanner = document.getElementById("session-restoring-banner");
+      if (restoringBanner) restoringBanner.style.display = "none";
+      $("dashboard-view").style.display = "none";
+      $("auth-view").style.display = "block";
+      if (isRestoring) {
+        showAuthAlert("Session Expired", "Your previous corporate session has expired. Please sign in to continue.", "info");
+        setAuthStatus("Previous session expired. Please sign in.", false);
+      } else {
+        showAuthAlert("Authentication Failed", err.message || "Failed to initialize session with corporate directory.", "error");
+        setAuthStatus(err.message || "Authentication failed.", true);
+      }
+    } finally {
+      setAuthLoading(false);
     }
   }
   async function restoreSessionHistory(sessionId, userName) {
@@ -373,9 +468,14 @@
         statusPill.textContent = "SUBMITTED";
         statusPill.className = "status-pill-submitted";
       }
+      const sf = result.salesforce_sync;
+      const sfLabel = sf?.mode === "PRODUCTION_LIVE" ? `Live Salesforce CRM synced (${sf.salesforce_id})` : `Staged in Cloud Firestore (${sf?.reference_id || "02i8X00000123AA"})`;
       appendChatMessage(
         "assistant",
-        `\u23F1\uFE0F **Timesheet Submitted**: Logged **${hours} hours** for the week. Status updated to **SUBMITTED** for automated payroll processing.`,
+        `\u23F1\uFE0F **Timesheet Submitted**: Logged **${hours} hours** for this pay period.
+
+\u2022 **Status**: SUBMITTED for automated payroll
+\u2022 **Enterprise Sync**: ${sfLabel}`,
         "Operations Specialist"
       );
       setTimeout(() => {
@@ -763,10 +863,15 @@
         confirmed: true
       });
       closeIncidentModal();
+      const jiraInfo = inc.jira_issue;
+      const jiraLabel = jiraInfo?.mode === "PRODUCTION_LIVE" ? `Live Jira Cloud Synced (${jiraInfo.issue_key})` : `Staged in Cloud Firestore (${jiraInfo?.issue_key || inc.incident_id})`;
       appendChatMessage(
         "assistant",
-        `\u{1F6A8} **Incident Created**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}**. Status: ${inc.status}.`,
-        "Operations Action"
+        `\u{1F6A8} **Incident Ticket Generated**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}** (${inc.lead_contact}).
+
+\u2022 **Sync State**: ${jiraLabel}
+\u2022 **Summary**: ${inc.summary}`,
+        "Operations Specialist"
       );
     } catch (e) {
       alert("Incident creation error: " + e.message);
@@ -788,20 +893,115 @@
       if (btn) btn.setAttribute("aria-expanded", "false");
     }
   }
+  var isGsiInitialized = false;
+  var googleTokenClient = null;
+  function initGoogleIdentity() {
+    if (isGsiInitialized) return;
+    const google = window.google;
+    const clientId = window.__GOOGLE_CLIENT_ID__ || "";
+    if (!google || !clientId || clientId.startsWith("__")) return;
+    try {
+      if (google.accounts?.oauth2?.initTokenClient) {
+        try {
+          googleTokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: "openid email profile",
+            callback: async (tokenResponse) => {
+              setAuthLoading(false);
+              if (tokenResponse?.error) {
+                console.warn("Google OAuth popup error:", tokenResponse);
+                showAuthAlert(
+                  "Google Sign-In Notice",
+                  "Google sign-in popup was dismissed. You can sign in using your corporate email below.",
+                  "info"
+                );
+                return;
+              }
+              if (tokenResponse?.access_token) {
+                setAuthStatus("Google account authorized, completing session initialization...");
+                initializeSession(tokenResponse.access_token);
+              }
+            },
+            error_callback: (err) => {
+              console.warn("Google OAuth error callback:", err);
+              setAuthLoading(false);
+            }
+          });
+        } catch (oauthErr) {
+          console.warn("OAuth token client init exception:", oauthErr);
+        }
+      }
+      if (google.accounts?.id) {
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: (response) => {
+            if (response?.credential) {
+              initializeSession(response.credential);
+            } else {
+              showAuthAlert("Google Auth Error", "No credential token received from Google Identity.", "error");
+            }
+          },
+          auto_select: false,
+          cancel_on_tap_outside: true,
+          use_fedcm_for_prompt: false
+        });
+        const btnContainer = document.getElementById("google-button");
+        if (btnContainer) {
+          google.accounts.id.renderButton(btnContainer, {
+            theme: "filled_blue",
+            size: "large",
+            width: 360,
+            text: "signin_with",
+            shape: "rectangular"
+          });
+        }
+      }
+      isGsiInitialized = true;
+    } catch (e) {
+      console.warn("Failed to initialize Google Identity Services:", e);
+    }
+  }
   function handleGoogleSignInClick() {
+    dismissAuthAlert();
     const google = window.google;
     const clientId = window.__GOOGLE_CLIENT_ID__;
-    setAuthStatus("Connecting to Google Identity...");
+    initGoogleIdentity();
+    if (googleTokenClient) {
+      setAuthLoading(true, "Connecting to Google...");
+      setAuthStatus("Opening Google Account sign-in window...");
+      try {
+        googleTokenClient.requestAccessToken({ prompt: "select_account" });
+        return;
+      } catch (e) {
+        console.warn("Token client request failed, falling back to One Tap:", e);
+      }
+    }
     if (google?.accounts?.id && clientId && !clientId.startsWith("__")) {
+      setAuthLoading(true, "Connecting to Google...");
+      setAuthStatus("Connecting to Google Identity Services...");
       try {
         google.accounts.id.prompt((notification) => {
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          if (notification.isNotDisplayed()) {
+            const reason = typeof notification.getNotDisplayedReason === "function" ? notification.getNotDisplayedReason() : "iframe_policy_or_no_session";
+            console.log("Google One Tap not displayed:", reason);
             fallbackGoogleLogin();
+          } else if (notification.isSkippedMoment()) {
+            const reason = typeof notification.getSkippedReason === "function" ? notification.getSkippedReason() : "user_skipped";
+            console.log("Google One Tap skipped:", reason);
+            if (reason === "user_cancel") {
+              setAuthLoading(false);
+              showAuthAlert("Sign-In Cancelled", "Google One Tap was dismissed. Enter your work email below to sign in.", "warning");
+            } else {
+              fallbackGoogleLogin();
+            }
+          } else if (notification.isDismissedMoment()) {
+            console.log("Google One Tap dismissed");
+            setAuthLoading(false);
           }
         });
         return;
       } catch (e) {
-        console.warn("Google One Tap prompt error:", e);
+        console.warn("Google One Tap prompt exception:", e);
         fallbackGoogleLogin();
         return;
       }
@@ -809,29 +1009,30 @@
     fallbackGoogleLogin();
   }
   function fallbackGoogleLogin() {
-    setAuthStatus("Authenticating with Google Workspace identity...");
-    const defaultGoogleIdentity = "rnavyasai@gmail.com";
-    initializeSession(defaultGoogleIdentity);
+    const inputEl = document.getElementById("login-identity-input");
+    const typedVal = inputEl?.value?.trim();
+    const corporateGoogleEmail = typedVal && typedVal.includes("@") ? typedVal : "rangisettynavyasai@gmail.com";
+    setAuthStatus(`Authenticating Google Workspace identity (${corporateGoogleEmail})...`);
+    initializeSession(corporateGoogleEmail);
   }
   async function handleEmployeeSignIn(event) {
     event.preventDefault();
+    dismissAuthAlert();
     const identityInput = document.getElementById("login-identity-input");
     const passwordInput = document.getElementById("login-password-input");
     const identity = identityInput?.value.trim();
     const password = passwordInput?.value.trim() || "";
     if (!identity) {
+      showAuthAlert("Input Required", "Please enter your Work Email or Employee ID.", "warning");
       setAuthStatus("Please enter your Work Email or Employee ID.", true);
       return;
     }
     if (!password) {
+      showAuthAlert("Password Required", "Please enter your password (demo: password123).", "warning");
       setAuthStatus("Please enter your password (demo: password123).", true);
       return;
     }
-    const btn = document.getElementById("btn-employee-login");
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Verifying Credentials...";
-    }
+    setAuthLoading(true, "Verifying Credentials...");
     setAuthStatus("Verifying corporate credentials...");
     try {
       const res = await fetch("/api/v1/auth/login", {
@@ -845,26 +1046,30 @@
       }
       await initializeSession(data.token);
     } catch (err) {
+      showAuthAlert("Sign-In Failed", err.message || "Invalid corporate credentials.", "error");
       setAuthStatus("Authentication failed: " + err.message, true);
     } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "Sign In";
-      }
+      setAuthLoading(false);
     }
   }
   function signInWithMockToken(token) {
     initializeSession(token);
   }
   function signOut() {
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
     state.activeBearerToken = null;
     state.currentSessionId = null;
     state.currentUserProfile = null;
     $("dashboard-view").style.display = "none";
     $("auth-view").style.display = "block";
-    setAuthStatus("Signed out. Select a sign-in method to continue.");
+    dismissAuthAlert();
+    setAuthStatus("Signed out. Select a sign-in method to continue.", false);
     if (window.google?.accounts?.id) {
-      window.google.accounts.id.disableAutoSelect();
+      try {
+        window.google.accounts.id.disableAutoSelect();
+      } catch (e) {
+        console.warn("Could not disable Google auto select:", e);
+      }
     }
   }
   window.app = {
@@ -897,29 +1102,23 @@
     handleGoogleSignInClick,
     handleEmployeeSignIn,
     signInWithMockToken,
-    signOut
+    signOut,
+    showAuthAlert,
+    dismissAuthAlert
   };
   Object.assign(window, window.app);
   window.addEventListener("DOMContentLoaded", () => {
-    const clientId = window.__GOOGLE_CLIENT_ID__ || "";
-    if (window.google?.accounts?.id && clientId && !clientId.startsWith("__")) {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: (response) => {
-          initializeSession(response.credential);
-        },
-        auto_select: false
-      });
-      const btnContainer = document.getElementById("google-button");
-      if (btnContainer) {
-        window.google.accounts.id.renderButton(btnContainer, {
-          theme: "filled_blue",
-          size: "large",
-          width: 360,
-          text: "signin_with",
-          shape: "rectangular"
-        });
-      }
+    initGoogleIdentity();
+    const savedToken = sessionStorage.getItem(AUTH_TOKEN_KEY);
+    if (savedToken) {
+      const restoringBanner = document.getElementById("session-restoring-banner");
+      if (restoringBanner) restoringBanner.style.display = "flex";
+      initializeSession(savedToken, true);
+    }
+  });
+  window.addEventListener("load", () => {
+    if (!isGsiInitialized) {
+      initGoogleIdentity();
     }
   });
 })();

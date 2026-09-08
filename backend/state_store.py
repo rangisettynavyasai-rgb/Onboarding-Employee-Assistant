@@ -28,3 +28,9 @@ def add_incident(incident: Dict[str, Any]) -> None:
 def get_all_incidents() -> List[Dict[str, Any]]:
     return firestore_db.get_all_incidents()
 
+def save_employee(employee_dict: Dict[str, Any]) -> None:
+    firestore_db.save_employee(employee_dict)
+
+def get_employee(employee_id: str) -> Optional[Dict[str, Any]]:
+    return firestore_db.get_employee(employee_id)
+

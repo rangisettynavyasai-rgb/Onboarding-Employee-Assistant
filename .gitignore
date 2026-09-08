@@ -1,0 +1,23 @@
+# Environment secrets & local overrides (Never commit to GitHub)
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+public/app.js.map
+
+# Python execution cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Operating system & editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

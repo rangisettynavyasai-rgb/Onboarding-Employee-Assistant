@@ -767,6 +767,76 @@
       background: rgba(99, 102, 241, 0.2);
       border-color: var(--accent-indigo);
     }
+
+    /* Auth Alert & Notification Feedback Box */
+    .auth-alert-box {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 14px;
+      text-align: left;
+      animation: fadeIn 0.2s ease-out;
+    }
+    .auth-alert-error {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #FCA5A5;
+    }
+    .auth-alert-warning {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #FCD34D;
+    }
+    .auth-alert-info {
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #93C5FD;
+    }
+    .auth-alert-icon {
+      font-size: 16px;
+      line-height: 1;
+      padding-top: 1px;
+    }
+    .auth-alert-dismiss {
+      background: transparent;
+      border: none;
+      color: inherit;
+      opacity: 0.6;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .auth-alert-dismiss:hover { opacity: 1; }
+
+    /* Session Restoring Indicator */
+    .session-restoring-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #A5B4FC;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+    .auth-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -779,6 +849,22 @@
       <div class="auth-logo">✦</div>
       <h1 class="auth-title">Employee AI Assistant</h1>
       <p class="auth-subtitle">Your unified internal workspace for team knowledge, onboarding, and daily operations.</p>
+
+      <!-- Active Session Restoring Indicator -->
+      <div id="session-restoring-banner" class="session-restoring-banner" style="display: none;">
+        <span class="auth-spinner"></span>
+        <span>Restoring active session from verified corporate identity...</span>
+      </div>
+
+      <!-- Authentication Error / Notice Alert Banner -->
+      <div id="auth-alert" class="auth-alert-box auth-alert-error" style="display: none;">
+        <span id="auth-alert-icon" class="auth-alert-icon">⚠️</span>
+        <div style="flex: 1;">
+          <div id="auth-alert-title" style="font-weight: 600; font-size: 13px; margin-bottom: 2px;">Authentication Alert</div>
+          <div id="auth-alert-message" style="font-size: 12px; line-height: 1.4; opacity: 0.9;"></div>
+        </div>
+        <button type="button" class="auth-alert-dismiss" onclick="dismissAuthAlert()" aria-label="Dismiss">✕</button>
+      </div>
 
       <!-- Prominent Google Identity Sign-In -->
       <button 
@@ -794,10 +880,10 @@
           <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.94 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
           <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.29 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
         </svg>
-        <span>Continue with Google</span>
+        <span id="btn-google-sso-label">Continue with Google</span>
       </button>
 
-      <!-- Optional Container for Google Identity Services Iframe -->
+      <!-- Container for Google Identity Services Iframe (when active) -->
       <div id="google-button" style="display: none; justify-content: center; margin-top: 10px;"></div>
 
       <div class="divider">or sign in with corporate credentials</div>
@@ -812,7 +898,7 @@
             id="login-identity-input" 
             type="text" 
             class="form-control" 
-            placeholder="e.g. rahul.sharma@company.com or EMP-2026-001" 
+            placeholder="e.g. rangisettynavyasai@gmail.com or EMP-2026-001" 
             required 
             autocomplete="username"
             style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
@@ -841,7 +927,7 @@
           class="btn-send" 
           style="width: 100%; justify-content: center; padding: 12px; font-size: 14px; margin-top: 4px;"
         >
-          Sign In
+          <span id="btn-employee-login-label">Sign In</span>
         </button>
       </form>
 
@@ -1189,7 +1275,7 @@
 
   <!-- Compiled UI TypeScript Bundle -->
   <script>
-    window.__GOOGLE_CLIENT_ID__ = "__GOOGLE_CLIENT_ID__";
+    window.__GOOGLE_CLIENT_ID__ = "{{GOOGLE_CLIENT_ID}}";
   </script>
   <script type="module" src="/app.js"></script>
 </body>

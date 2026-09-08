@@ -1,0 +1,14 @@
+{
+  "environment": "development",
+  "allowedCorporateDomain": "*",
+  "gcpProjectId": "patchamomma-505416",
+  "firestoreDatabaseId": "onboarding-employee-assistant-firestore-database",
+  "googleOAuthClientId": "874836211421-q56rjcminj3kr9fviretuu8ndfp9krtm.apps.googleusercontent.com",
+  "jira": {
+    "host": "https://jira.company.internal",
+    "projectKey": "OPS"
+  },
+  "salesforce": {
+    "instanceUrl": "https://salesforce.company.internal"
+  }
+}

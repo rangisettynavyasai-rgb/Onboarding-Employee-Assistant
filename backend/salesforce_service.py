@@ -11,11 +11,22 @@ import urllib.request
 import urllib.error
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
+from backend.config import get_config_val
 
 class SalesforceService:
+    @classmethod
+    def is_configured(cls) -> bool:
+        instance_url = str(get_config_val("SALESFORCE_INSTANCE_URL", "")).strip()
+        has_token = bool(os.environ.get("SALESFORCE_ACCESS_TOKEN", "").strip())
+        return bool(instance_url and has_token)
+
+    @classmethod
+    def get_instance_url(cls) -> str:
+        return str(get_config_val("SALESFORCE_INSTANCE_URL", "")).strip().rstrip("/") or "https://salesforce.company.internal"
+
     @staticmethod
     def get_status() -> Dict[str, Any]:
-        instance_url = os.environ.get("SALESFORCE_INSTANCE_URL", "").strip()
+        instance_url = str(get_config_val("SALESFORCE_INSTANCE_URL", "")).strip()
         has_token = bool(os.environ.get("SALESFORCE_ACCESS_TOKEN", "").strip())
         configured = bool(instance_url and has_token)
 

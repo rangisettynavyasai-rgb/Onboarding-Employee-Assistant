@@ -1,9 +1,34 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { GoogleGenAI } from "@google/genai";
 import { callPythonBackend } from "./src/pythonBridge.js";
+
+// Load non-secret configuration from app.config.json if available
+try {
+  const configPath = path.join(process.cwd(), "app.config.json");
+  if (fs.existsSync(configPath)) {
+    const appConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    const setIfMissing = (key: string, val: any) => {
+      if (val && !process.env[key]) process.env[key] = String(val);
+    };
+    setIfMissing("ENVIRONMENT", appConfig.environment);
+    setIfMissing("ALLOWED_CORPORATE_DOMAIN", appConfig.allowedCorporateDomain);
+    setIfMissing("GCP_PROJECT_ID", appConfig.gcpProjectId);
+    setIfMissing("FIREBASE_PROJECT_ID", appConfig.gcpProjectId);
+    setIfMissing("FIRESTORE_DATABASE_ID", appConfig.firestoreDatabaseId);
+    setIfMissing("GOOGLE_OAUTH_CLIENT_ID", appConfig.googleOAuthClientId);
+    setIfMissing("JIRA_HOST", appConfig.jira?.host);
+    setIfMissing("JIRA_PROJECT_KEY", appConfig.jira?.projectKey);
+    setIfMissing("SALESFORCE_INSTANCE_URL", appConfig.salesforce?.instanceUrl);
+  }
+} catch (e) {
+  console.warn("[Config] Notice: Could not parse app.config.json:", e);
+}
 
 const app = express();
 const PORT = 3000;
@@ -99,6 +124,88 @@ app.post("/api/v1/auth/login", async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ detail: err.message || "Authentication service error" });
+  }
+});
+
+// 1c. Google Identity Services (GIS) / Corporate Google Workspace Authentication
+app.post("/api/v1/auth/google", async (req, res) => {
+  const { credential, email, name, sub } = req.body;
+  if (!credential && !email) {
+    res.status(400).json({ detail: "Google credential or email is required." });
+    return;
+  }
+
+  try {
+    let resolvedEmail = (typeof email === "string" ? email.trim() : "") || "";
+    let resolvedName = (typeof name === "string" ? name.trim() : "") || "";
+    let resolvedSub = (typeof sub === "string" ? sub.trim() : "") || "";
+
+    // 1. If credential is an OAuth access token (starts with ya29.)
+    if (typeof credential === "string" && credential.startsWith("ya29.")) {
+      try {
+        const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+          headers: { Authorization: `Bearer ${credential}` },
+        });
+        if (userinfoRes.ok) {
+          const userinfo: any = await userinfoRes.json();
+          if (userinfo.email) resolvedEmail = userinfo.email;
+          if (userinfo.name) resolvedName = userinfo.name;
+          if (userinfo.sub) resolvedSub = userinfo.sub;
+        }
+      } catch (oauthErr) {
+        console.warn("Could not fetch userinfo from Google OAuth access token:", oauthErr);
+      }
+    }
+
+    // 2. If a true Google JWT ID token credential is provided (exactly 3 dot-separated parts starting with eyJ)
+    const isJwt =
+      typeof credential === "string" &&
+      !credential.includes("@") &&
+      credential.split(".").length === 3 &&
+      credential.startsWith("eyJ");
+
+    if (isJwt) {
+      try {
+        const parts = credential.split(".");
+        let payloadBase64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        while (payloadBase64.length % 4 !== 0) {
+          payloadBase64 += "=";
+        }
+        const payloadJson = Buffer.from(payloadBase64, "base64").toString("utf-8");
+        const claims = JSON.parse(payloadJson);
+        if (claims.email) resolvedEmail = claims.email;
+        if (claims.name) resolvedName = claims.name;
+        if (claims.sub) resolvedSub = claims.sub;
+      } catch (decodeErr) {
+        console.warn("Could not decode Google ID token payload:", decodeErr);
+      }
+    }
+
+    // 3. If credential itself is directly an email address
+    if (!resolvedEmail && typeof credential === "string" && credential.includes("@")) {
+      resolvedEmail = credential.trim();
+    }
+
+    const pyAuth = await callPythonBackend({
+      action: "register_google_profile",
+      email: resolvedEmail || credential || "",
+      name: resolvedName || "",
+      sub: resolvedSub || "",
+      identity: resolvedEmail || credential || "",
+    });
+
+    if (!pyAuth || pyAuth.error) {
+      res.status(401).json({ detail: pyAuth?.error || "Google Identity authentication failed." });
+      return;
+    }
+
+    res.json({
+      status: "authenticated",
+      token: pyAuth.employee_id || resolvedEmail || credential,
+      employee: pyAuth,
+    });
+  } catch (err: any) {
+    res.status(500).json({ detail: err.message || "Google authentication service error" });
   }
 });
 
@@ -206,9 +313,24 @@ Critical Directives:
             suggested.push("Point of Contact", "Coding Standards", "Check Timesheet Status");
           }
 
+          const effectiveSessionId = session_id || `sess-${employee.employee_id.toLowerCase()}`;
+          // Persist turn to Cloud Firestore
+          try {
+            await callPythonBackend({
+              action: "record_chat_turn",
+              identity: employee.employee_id,
+              session_id: effectiveSessionId,
+              user_message: message,
+              assistant_message: replyText,
+              agent: "Company AI Assistant (Gemini 3.6)",
+            });
+          } catch (recErr: any) {
+            console.warn("Firestore session persist note:", recErr.message);
+          }
+
           res.json({
             response: replyText,
-            session_id: session_id || `sess-${Date.now()}`,
+            session_id: effectiveSessionId,
             agent_invoked: "Company AI Assistant (Gemini 3.6)",
             suggested_actions: suggested,
             timestamp: new Date().toISOString(),
@@ -456,23 +578,31 @@ app.post("/api/v1/incidents/create", requireAuth, async (req: AuthenticatedReque
   }
 });
 
+// 10. Integrations & Enterprise Cloud Sync Status (Dual-Mode Inspector)
+app.get("/api/v1/integrations/status", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const status = await callPythonBackend({
+      action: "integration_status",
+      identity: req.employee!.employee_id,
+    });
+    res.json(status);
+  } catch (e: any) {
+    res.status(500).json({ detail: e.message || "Failed to check integration status" });
+  }
+});
+
+
 // Serve frontend assets
 const publicPath = path.join(process.cwd(), "public");
-app.use(express.static(publicPath));
+app.use(express.static(publicPath, { index: false }));
 
 // Main index.html route with dynamic Client ID interpolation
 app.get("*", (_req, res) => {
   const indexPath = path.join(publicPath, "index.html");
   if (fs.existsSync(indexPath)) {
     let html = fs.readFileSync(indexPath, "utf-8");
-    let clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || "";
-    if (!clientId && fs.existsSync("firebase-applet-config.json")) {
-      try {
-        const cfg = JSON.parse(fs.readFileSync("firebase-applet-config.json", "utf-8"));
-        if (cfg.oAuthClientId) clientId = cfg.oAuthClientId;
-      } catch {}
-    }
-    html = html.replace("__GOOGLE_CLIENT_ID__", clientId);
+    const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || "";
+    html = html.replace(/\{\{GOOGLE_CLIENT_ID\}\}/g, clientId);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   } else {

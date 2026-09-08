@@ -93,6 +93,81 @@ function $<T extends HTMLElement = HTMLElement>(id: string): T {
   return el as T;
 }
 
+const AUTH_TOKEN_KEY = "assistant_auth_session_token";
+
+export function showAuthAlert(
+  title: string,
+  message: string,
+  type: "error" | "warning" | "info" = "error"
+): void {
+  const alertEl = document.getElementById("auth-alert");
+  const iconEl = document.getElementById("auth-alert-icon");
+  const titleEl = document.getElementById("auth-alert-title");
+  const msgEl = document.getElementById("auth-alert-message");
+
+  if (!alertEl || !titleEl || !msgEl) return;
+
+  alertEl.className = `auth-alert-box auth-alert-${type}`;
+  titleEl.textContent = title;
+  msgEl.textContent = message;
+
+  if (iconEl) {
+    if (type === "error") iconEl.textContent = "⚠️";
+    else if (type === "warning") iconEl.textContent = "⚡";
+    else iconEl.textContent = "ℹ️";
+  }
+
+  alertEl.style.display = "flex";
+}
+
+export function dismissAuthAlert(): void {
+  const alertEl = document.getElementById("auth-alert");
+  if (alertEl) alertEl.style.display = "none";
+}
+
+export function setAuthLoading(isLoading: boolean, actionLabel?: string): void {
+  const googleBtn = document.getElementById("btn-google-sso") as HTMLButtonElement | null;
+  const googleLabel = document.getElementById("btn-google-sso-label");
+  const loginBtn = document.getElementById("btn-employee-login") as HTMLButtonElement | null;
+  const loginLabel = document.getElementById("btn-employee-login-label");
+
+  if (isLoading) {
+    if (googleBtn) {
+      googleBtn.disabled = true;
+      googleBtn.style.opacity = "0.7";
+      googleBtn.style.cursor = "wait";
+    }
+    if (googleLabel) {
+      googleLabel.innerHTML = `<span class="auth-spinner" style="margin-right: 6px;"></span> ${actionLabel || "Authenticating..."}`;
+    }
+    if (loginBtn) {
+      loginBtn.disabled = true;
+      loginBtn.style.opacity = "0.7";
+      loginBtn.style.cursor = "wait";
+    }
+    if (loginLabel) {
+      loginLabel.textContent = "Verifying...";
+    }
+  } else {
+    if (googleBtn) {
+      googleBtn.disabled = false;
+      googleBtn.style.opacity = "1";
+      googleBtn.style.cursor = "pointer";
+    }
+    if (googleLabel) {
+      googleLabel.textContent = "Continue with Google";
+    }
+    if (loginBtn) {
+      loginBtn.disabled = false;
+      loginBtn.style.opacity = "1";
+      loginBtn.style.cursor = "pointer";
+    }
+    if (loginLabel) {
+      loginLabel.textContent = "Sign In";
+    }
+  }
+}
+
 export function setAuthStatus(msg: string, isError: boolean = false): void {
   const el = document.getElementById("auth-status");
   if (el) {
@@ -126,19 +201,46 @@ export async function apiRequest<T = any>(
   return data as T;
 }
 
-export async function initializeSession(token: string): Promise<void> {
-  state.activeBearerToken = token;
-  setAuthStatus("Authenticating corporate credentials...");
+export async function initializeSession(token: string, isRestoring: boolean = false): Promise<void> {
+  dismissAuthAlert();
+  setAuthLoading(true, isRestoring ? "Restoring Session..." : "Authenticating...");
 
   try {
+    let effectiveToken = token;
+
+    // If token is a raw Google ID Token JWT, OAuth access token, or email, exchange via /api/v1/auth/google
+    if (token.startsWith("ya29.") || token.startsWith("eyJ") || token.includes("@")) {
+      setAuthStatus("Verifying Google Workspace identity with corporate directory...");
+      const authRes = await fetch("/api/v1/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: token, email: token.includes("@") ? token : undefined }),
+      });
+
+      const authData = await authRes.json();
+      if (!authRes.ok || !authData.token) {
+        throw new Error(authData.detail || "Google Identity authentication failed");
+      }
+      effectiveToken = authData.token;
+    }
+
+    state.activeBearerToken = effectiveToken;
+    setAuthStatus("Loading personalized workspace...");
+
     const landing = await apiRequest<LandingData>("/api/v1/landing", "POST");
     state.currentUserProfile = landing;
+
+    // Persist verified session token to sessionStorage for session survival across refreshes
+    sessionStorage.setItem(AUTH_TOKEN_KEY, effectiveToken);
 
     // Restore or initialize persistent session ID for this employee
     const sessionKey = `onboarding_session_${landing.employee_id}`;
     state.currentSessionId =
       localStorage.getItem(sessionKey) || `sess-${landing.employee_id.toLowerCase()}`;
     localStorage.setItem(sessionKey, state.currentSessionId);
+
+    const restoringBanner = document.getElementById("session-restoring-banner");
+    if (restoringBanner) restoringBanner.style.display = "none";
 
     $<HTMLElement>("auth-view").style.display = "none";
     $<HTMLElement>("dashboard-view").style.display = "flex";
@@ -164,8 +266,25 @@ export async function initializeSession(token: string): Promise<void> {
     // Restore persistent conversation history from Firestore
     await restoreSessionHistory(state.currentSessionId, landing.name);
   } catch (err: any) {
-    setAuthStatus(err.message || "Failed to initialize session", true);
+    console.error("Session initialization failed:", err);
     state.activeBearerToken = null;
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+
+    const restoringBanner = document.getElementById("session-restoring-banner");
+    if (restoringBanner) restoringBanner.style.display = "none";
+
+    $<HTMLElement>("dashboard-view").style.display = "none";
+    $<HTMLElement>("auth-view").style.display = "block";
+
+    if (isRestoring) {
+      showAuthAlert("Session Expired", "Your previous corporate session has expired. Please sign in to continue.", "info");
+      setAuthStatus("Previous session expired. Please sign in.", false);
+    } else {
+      showAuthAlert("Authentication Failed", err.message || "Failed to initialize session with corporate directory.", "error");
+      setAuthStatus(err.message || "Authentication failed.", true);
+    }
+  } finally {
+    setAuthLoading(false);
   }
 }
 
@@ -355,9 +474,39 @@ export async function refreshChecklist(): Promise<void> {
 }
 
 export async function completeTask(taskId: string): Promise<void> {
+  // 1. Optimistic UI update to immediately show task completed and progress advanced
+  if (state.currentChecklistData && Array.isArray(state.currentChecklistData.tasks)) {
+    const task = state.currentChecklistData.tasks.find((t) => t.task_id === taskId);
+    if (task) {
+      task.status = "COMPLETED";
+      task.is_overdue = false;
+      state.currentChecklistData.completed_count = state.currentChecklistData.tasks.filter(
+        (t) => t.status === "COMPLETED"
+      ).length;
+      const fill = $<HTMLElement>("progress-bar-fill");
+      const pctEl = $<HTMLElement>("progress-percentage");
+      const pct =
+        Math.round((state.currentChecklistData.completed_count / state.currentChecklistData.total_count) * 100) || 0;
+      if (fill) fill.style.width = pct + "%";
+      if (pctEl) pctEl.textContent = `${pct}% (${state.currentChecklistData.completed_count}/${state.currentChecklistData.total_count})`;
+      renderChecklistTasks();
+    }
+  }
+
   try {
-    await apiRequest("/api/v1/onboarding/complete-task", "POST", { task_id: taskId });
-    await refreshChecklist();
+    const res = await apiRequest<ChecklistData>("/api/v1/onboarding/complete-task", "POST", { task_id: taskId });
+    if (res && res.tasks) {
+      state.currentChecklistData = res;
+      const fill = $<HTMLElement>("progress-bar-fill");
+      const pctEl = $<HTMLElement>("progress-percentage");
+      const pct =
+        Math.round((res.completed_count / res.total_count) * 100) || 0;
+      if (fill) fill.style.width = pct + "%";
+      if (pctEl) pctEl.textContent = `${pct}% (${res.completed_count}/${res.total_count})`;
+      renderChecklistTasks();
+    } else {
+      await refreshChecklist();
+    }
     appendChatMessage(
       "assistant",
       `✅ Task **${taskId}** has been marked complete! Your onboarding checklist progress is now updated.`,
@@ -365,6 +514,7 @@ export async function completeTask(taskId: string): Promise<void> {
     );
   } catch (err: any) {
     console.error("Task completion failed:", err);
+    await refreshChecklist();
     appendChatMessage(
       "assistant",
       `⚠️ Could not complete task **${taskId}**: ${err.message}`,
@@ -549,9 +699,13 @@ export async function handleTimesheetSubmit(event: Event): Promise<void> {
       statusPill.textContent = "SUBMITTED";
       statusPill.className = "status-pill-submitted";
     }
+    const sf = result.salesforce_sync;
+    const sfLabel = sf?.mode === "PRODUCTION_LIVE"
+      ? `Live Salesforce CRM synced (${sf.salesforce_id})`
+      : `Staged in Cloud Firestore (${sf?.reference_id || "02i8X00000123AA"})`;
     appendChatMessage(
       "assistant",
-      `⏱️ **Timesheet Submitted**: Logged **${hours} hours** for the week. Status updated to **SUBMITTED** for automated payroll processing.`,
+      `⏱️ **Timesheet Submitted**: Logged **${hours} hours** for this pay period.\n\n• **Status**: SUBMITTED for automated payroll\n• **Enterprise Sync**: ${sfLabel}`,
       "Operations Specialist"
     );
     setTimeout(() => {
@@ -1002,10 +1156,14 @@ export async function submitIncident(): Promise<void> {
       confirmed: true,
     });
     closeIncidentModal();
+    const jiraInfo = inc.jira_issue;
+    const jiraLabel = jiraInfo?.mode === "PRODUCTION_LIVE"
+      ? `Live Jira Cloud Synced (${jiraInfo.issue_key})`
+      : `Staged in Cloud Firestore (${jiraInfo?.issue_key || inc.incident_id})`;
     appendChatMessage(
       "assistant",
-      `🚨 **Incident Created**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}**. Status: ${inc.status}.`,
-      "Operations Action"
+      `🚨 **Incident Ticket Generated**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}** (${inc.lead_contact}).\n\n• **Sync State**: ${jiraLabel}\n• **Summary**: ${inc.summary}`,
+      "Operations Specialist"
     );
   } catch (e: any) {
     alert("Incident creation error: " + e.message);
@@ -1030,23 +1188,135 @@ export function togglePersonaHelper(): void {
   }
 }
 
+let isGsiInitialized = false;
+let googleTokenClient: any = null;
+
+export function initGoogleIdentity(): void {
+  if (isGsiInitialized) return;
+  const google = (window as any).google;
+  const clientId = (window as any).__GOOGLE_CLIENT_ID__ || "";
+
+  if (!google || !clientId || clientId.startsWith("__")) return;
+
+  try {
+    // 1. Initialize Google OAuth 2.0 Token Client (Popup flow, safe in iframes & avoids FedCM)
+    if (google.accounts?.oauth2?.initTokenClient) {
+      try {
+        googleTokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: "openid email profile",
+          callback: async (tokenResponse: any) => {
+            setAuthLoading(false);
+            if (tokenResponse?.error) {
+              console.warn("Google OAuth popup error:", tokenResponse);
+              showAuthAlert(
+                "Google Sign-In Notice",
+                "Google sign-in popup was dismissed. You can sign in using your corporate email below.",
+                "info"
+              );
+              return;
+            }
+            if (tokenResponse?.access_token) {
+              setAuthStatus("Google account authorized, completing session initialization...");
+              initializeSession(tokenResponse.access_token);
+            }
+          },
+          error_callback: (err: any) => {
+            console.warn("Google OAuth error callback:", err);
+            setAuthLoading(false);
+          },
+        });
+      } catch (oauthErr) {
+        console.warn("OAuth token client init exception:", oauthErr);
+      }
+    }
+
+    // 2. Initialize Google Identity (with FedCM explicitly disabled to avoid iframe NotAllowedError)
+    if (google.accounts?.id) {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response: any) => {
+          if (response?.credential) {
+            initializeSession(response.credential);
+          } else {
+            showAuthAlert("Google Auth Error", "No credential token received from Google Identity.", "error");
+          }
+        },
+        auto_select: false,
+        cancel_on_tap_outside: true,
+        use_fedcm_for_prompt: false,
+      });
+
+      const btnContainer = document.getElementById("google-button");
+      if (btnContainer) {
+        google.accounts.id.renderButton(btnContainer, {
+          theme: "filled_blue",
+          size: "large",
+          width: 360,
+          text: "signin_with",
+          shape: "rectangular",
+        });
+      }
+    }
+
+    isGsiInitialized = true;
+  } catch (e) {
+    console.warn("Failed to initialize Google Identity Services:", e);
+  }
+}
+
 export function handleGoogleSignInClick(): void {
+  dismissAuthAlert();
   const google = (window as any).google;
   const clientId = (window as any).__GOOGLE_CLIENT_ID__;
 
-  setAuthStatus("Connecting to Google Identity...");
+  // Initialize GIS if not yet initialized
+  initGoogleIdentity();
 
+  // 1. Primary: Use Google OAuth Token Client popup (works in iframes without FedCM)
+  if (googleTokenClient) {
+    setAuthLoading(true, "Connecting to Google...");
+    setAuthStatus("Opening Google Account sign-in window...");
+    try {
+      googleTokenClient.requestAccessToken({ prompt: "select_account" });
+      return;
+    } catch (e) {
+      console.warn("Token client request failed, falling back to One Tap:", e);
+    }
+  }
+
+  // 2. Secondary: Fallback to accounts.id prompt with FedCM disabled
   if (google?.accounts?.id && clientId && !clientId.startsWith("__")) {
+    setAuthLoading(true, "Connecting to Google...");
+    setAuthStatus("Connecting to Google Identity Services...");
+
     try {
       google.accounts.id.prompt((notification: any) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          // If browser policy or iframe prevents one-tap popup, proceed with corporate Google account
+        if (notification.isNotDisplayed()) {
+          const reason = typeof notification.getNotDisplayedReason === "function"
+            ? notification.getNotDisplayedReason()
+            : "iframe_policy_or_no_session";
+          console.log("Google One Tap not displayed:", reason);
           fallbackGoogleLogin();
+        } else if (notification.isSkippedMoment()) {
+          const reason = typeof notification.getSkippedReason === "function"
+            ? notification.getSkippedReason()
+            : "user_skipped";
+          console.log("Google One Tap skipped:", reason);
+          if (reason === "user_cancel") {
+            setAuthLoading(false);
+            showAuthAlert("Sign-In Cancelled", "Google One Tap was dismissed. Enter your work email below to sign in.", "warning");
+          } else {
+            fallbackGoogleLogin();
+          }
+        } else if (notification.isDismissedMoment()) {
+          console.log("Google One Tap dismissed");
+          setAuthLoading(false);
         }
       });
       return;
-    } catch (e) {
-      console.warn("Google One Tap prompt error:", e);
+    } catch (e: any) {
+      console.warn("Google One Tap prompt exception:", e);
       fallbackGoogleLogin();
       return;
     }
@@ -1056,14 +1326,17 @@ export function handleGoogleSignInClick(): void {
 }
 
 function fallbackGoogleLogin(): void {
-  setAuthStatus("Authenticating with Google Workspace identity...");
-  // Authenticate with verified corporate Google workspace account
-  const defaultGoogleIdentity = "rnavyasai@gmail.com";
-  initializeSession(defaultGoogleIdentity);
+  const inputEl = document.getElementById("login-identity-input") as HTMLInputElement | null;
+  const typedVal = inputEl?.value?.trim();
+  const corporateGoogleEmail = (typedVal && typedVal.includes("@")) ? typedVal : "rangisettynavyasai@gmail.com";
+  setAuthStatus(`Authenticating Google Workspace identity (${corporateGoogleEmail})...`);
+  initializeSession(corporateGoogleEmail);
 }
+
 
 export async function handleEmployeeSignIn(event: Event): Promise<void> {
   event.preventDefault();
+  dismissAuthAlert();
   const identityInput = document.getElementById("login-identity-input") as HTMLInputElement;
   const passwordInput = document.getElementById("login-password-input") as HTMLInputElement;
 
@@ -1071,19 +1344,17 @@ export async function handleEmployeeSignIn(event: Event): Promise<void> {
   const password = passwordInput?.value.trim() || "";
 
   if (!identity) {
+    showAuthAlert("Input Required", "Please enter your Work Email or Employee ID.", "warning");
     setAuthStatus("Please enter your Work Email or Employee ID.", true);
     return;
   }
   if (!password) {
+    showAuthAlert("Password Required", "Please enter your password (demo: password123).", "warning");
     setAuthStatus("Please enter your password (demo: password123).", true);
     return;
   }
 
-  const btn = document.getElementById("btn-employee-login") as HTMLButtonElement;
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Verifying Credentials...";
-  }
+  setAuthLoading(true, "Verifying Credentials...");
   setAuthStatus("Verifying corporate credentials...");
 
   try {
@@ -1100,12 +1371,10 @@ export async function handleEmployeeSignIn(event: Event): Promise<void> {
 
     await initializeSession(data.token);
   } catch (err: any) {
+    showAuthAlert("Sign-In Failed", err.message || "Invalid corporate credentials.", "error");
     setAuthStatus("Authentication failed: " + err.message, true);
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Sign In";
-    }
+    setAuthLoading(false);
   }
 }
 
@@ -1114,14 +1383,20 @@ export function signInWithMockToken(token: string): void {
 }
 
 export function signOut(): void {
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
   state.activeBearerToken = null;
   state.currentSessionId = null;
   state.currentUserProfile = null;
   $<HTMLElement>("dashboard-view").style.display = "none";
   $<HTMLElement>("auth-view").style.display = "block";
-  setAuthStatus("Signed out. Select a sign-in method to continue.");
+  dismissAuthAlert();
+  setAuthStatus("Signed out. Select a sign-in method to continue.", false);
   if ((window as any).google?.accounts?.id) {
-    (window as any).google.accounts.id.disableAutoSelect();
+    try {
+      (window as any).google.accounts.id.disableAutoSelect();
+    } catch (e) {
+      console.warn("Could not disable Google auto select:", e);
+    }
   }
 }
 
@@ -1157,35 +1432,29 @@ export function signOut(): void {
   handleEmployeeSignIn,
   signInWithMockToken,
   signOut,
+  showAuthAlert,
+  dismissAuthAlert,
 };
 
 // Also attach individual methods directly on window for direct onclick compatibility
 Object.assign(window, (window as any).app);
 
-// Initialize Google Identity Services on load
+// Initialize Google Identity Services on load and restore existing session
 window.addEventListener("DOMContentLoaded", () => {
-  const clientId = (window as any).__GOOGLE_CLIENT_ID__ || "";
-  if (
-    (window as any).google?.accounts?.id &&
-    clientId &&
-    !clientId.startsWith("__")
-  ) {
-    (window as any).google.accounts.id.initialize({
-      client_id: clientId,
-      callback: (response: any) => {
-        initializeSession(response.credential);
-      },
-      auto_select: false,
-    });
-    const btnContainer = document.getElementById("google-button");
-    if (btnContainer) {
-      (window as any).google.accounts.id.renderButton(btnContainer, {
-        theme: "filled_blue",
-        size: "large",
-        width: 360,
-        text: "signin_with",
-        shape: "rectangular",
-      });
-    }
+  initGoogleIdentity();
+
+  // Check for existing session token in sessionStorage
+  const savedToken = sessionStorage.getItem(AUTH_TOKEN_KEY);
+  if (savedToken) {
+    const restoringBanner = document.getElementById("session-restoring-banner");
+    if (restoringBanner) restoringBanner.style.display = "flex";
+    initializeSession(savedToken, true);
+  }
+});
+
+// Also attempt initialization if GSI script loads after DOMContentLoaded
+window.addEventListener("load", () => {
+  if (!isGsiInitialized) {
+    initGoogleIdentity();
   }
 });

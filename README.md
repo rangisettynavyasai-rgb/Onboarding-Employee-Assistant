@@ -1,323 +1,229 @@
 # Enterprise AI Onboarding & Employee Assistant Framework
 
-[![Python](https://img.shields.io/badge/Python-3.10-yellow.svg)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-22_LTS-green.svg)](https://nodejs.org/)
+[![Python](https://img.shields.io/badge/Python-3.10-yellow.svg)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![Google Cloud Run](https://img.shields.io/badge/Google%20Cloud-Cloud%20Run-blue.svg)](https://cloud.google.com/run)
-[![BigQuery](https://img.shields.io/badge/GCP-BigQuery%20Knowledge%20Mesh-orange.svg)](https://cloud.google.com/bigquery)
-[![Gemini 2.5 Flash](https://img.shields.io/badge/Google%20GenAI-Gemini%202.5%20Flash-purple.svg)](https://ai.google.dev/)
+[![Google Cloud Firestore](https://img.shields.io/badge/Database-Cloud%20Firestore-orange.svg)](https://cloud.google.com/firestore)
+[![Gemini 3.6 Flash](https://img.shields.io/badge/Google%20GenAI-Gemini%203.6%20Flash-purple.svg)](https://ai.google.dev/)
+[![Google Secret Manager](https://img.shields.io/badge/Security-Secret%20Manager-red.svg)](https://cloud.google.com/secret-manager)
 
-Production-grade **Multi-Agent Enterprise AI Assistant** featuring a high-performance **Python Backend** (`backend/`), typed **UI TypeScript** frontend (`src/ui/`), and **Express Gateway** (`server.ts`). The system integrates **Google Identity Services (GIS)**, **Gemini 2.5 Flash** (via `@google/genai`), a **BigQuery Knowledge Mesh**, and **Google Cloud Storage (GCS)** assets.
-
----
-
-## 🏛️ Modernized System Architecture
-
-```
-                                [ Incoming Web User ]
-                                           │
-                                           ▼
-                      ┌─────────────────────────────────────────┐
-                      │    UI TypeScript Application (Browser)   │
-                      │  src/ui/app.ts ──> public/app.js bundle │
-                      └────────────────────┬────────────────────┘
-                                           │ HTTP/REST (Port 3000)
-                                           ▼
-                      ┌─────────────────────────────────────────┐
-                      │       Express Gateway (Node.js 22)      │
-                      │   Route routing & Google OAuth hosting  │
-                      └────────────────────┬────────────────────┘
-                                           │ Zero-copy JSON RPC Bridge
-                                           ▼
-                      ┌─────────────────────────────────────────┐
-                      │   Enterprise Python Backend (3.10)      │
-                      │          backend/runner.py              │
-                      └─────────────┬─────────────┬─────────────┘
-                                    │             │
-                    ┌───────────────┘             └───────────────┐
-                    ▼                                             ▼
-     ┌─────────────────────────────┐               ┌─────────────────────────────┐
-     │      Domain Services        │               │     Multi-Agent Subsystem   │
-     │    backend/services.py      │               │      backend/agents.py      │
-     ├─────────────────────────────┤               ├─────────────────────────────┤
-     │ • AuthService               │               │ • SupervisorAgent           │
-     │ • OnboardingService         │               │ • OnboardingSpecialistAgent │
-     │ • OperationsService         │               │ • OperationsAgent           │
-     │ • KnowledgeService          │               │ • KnowledgeMeshAgent        │
-     │ • ProactiveService          │               │ • CodeMentorAgent           │
-     │ • SessionService            │               │ • SecurityGuardAgent        │
-     └─────────────────────────────┘               └─────────────────────────────┘
-                    │                                             │
-                    └──────────────────────┬──────────────────────┘
-                                           │
-                                           ▼
-                            ┌─────────────────────────────┐
-                            │    ACL Policy & Data Mesh   │
-                            │  backend/auth_policy.py     │
-                            │  backend/data.py            │
-                            │  backend/models.py          │
-                            │  backend/firestore.py       │
-                            └─────────────────────────────┘
-```
-
-### Archived Legacy Implementations
-In accordance with the transition to pure Python backend domain logic:
-- All legacy TypeScript backend files (`src/services.ts`, `src/agents.ts`, `src/data.ts`, `src/types.ts`, `src/firestore.ts`) have been moved to `/older_version/src/`.
-- All operational routes (`/api/v1/auth`, `/api/v1/landing`, `/api/v1/chat`, `/api/v1/onboarding/*`, `/api/v1/knowledge/*`, `/api/v1/timesheets/*`, `/api/v1/incidents/*`, `/api/v1/session/history`) delegate strictly to `backend.runner`, `backend.services`, and `backend.firestore`.
+Production-grade **Multi-Agent Enterprise Employee & Onboarding Assistant**. Engineered with a zero-trust **Node.js 22 Express Gateway** (`server.ts`), official **Google Gen AI SDK** (`@google/genai`), an enterprise **Python 3.10 Microservice** (`backend/`), and durable persistence powered by **Google Cloud Firestore**.
 
 ---
 
-## 📋 Full Functionality Coverage Matrix
+## 🏛️ System Architecture
 
-| Feature Domain | Endpoint / RPC Action | Python Backend Implementation | Status |
+```
+                                [ Employee / Browser ]
+                                           │
+                                           ▼
+                       ┌─────────────────────────────────────────┐
+                       │   Google Identity Services (GIS) / SSO  │
+                       │    "Continue with Google" Workspace     │
+                       └────────────────────┬────────────────────┘
+                                           │ Bearer Token / ID Token
+                                           ▼
+                       ┌─────────────────────────────────────────┐
+                       │       Express Gateway (Node.js 22)      │
+                       │               server.ts                 │
+                       │  • Bearer Token / JWT Verification      │
+                       │  • Server-Side Gemini 3.6 Flash Route   │
+                       │  • Static UI & Web Client Hosting       │
+                       └────────────────────┬────────────────────┘
+                                           │ Zero-Copy JSON RPC
+                                           ▼
+                       ┌─────────────────────────────────────────┐
+                       │    Python Microservice (Python 3.10)    │
+                       │            backend/runner.py            │
+                       │  • AuthService & Employee Resolution    │
+                       │  • Supervisor Agent & Domain Mesh       │
+                       │  • Dual-Mode Integration Engine         │
+                       └───────┬─────────────────────────┬───────┘
+                               │                         │
+               ┌───────────────┘                         └───────────────┐
+               ▼                                                         ▼
+┌─────────────────────────────┐                           ┌─────────────────────────────┐
+│    Cloud Firestore DB       │                           │  Enterprise Cloud Services  │
+│  databaseId: ai-studio-...  │                           │  (Dual-Mode: Staging / Live)│
+├─────────────────────────────┤                           ├─────────────────────────────┤
+│ • /sessions/{sessionId}     │                           │ • Google Calendar API v3    │
+│ • /employees/{employeeId}   │                           │   (OOO & Leave schedules)   │
+│ • /tasks/{employeeId}       │                           │ • Atlassian Jira Cloud      │
+│ • /timesheets/{timesheetId} │                           │   (ADF v3 Incidents)        │
+│ • /incidents/{incidentId}   │                           │ • Salesforce CRM            │
+└─────────────────────────────┘                           │   (TimeSheet sObjects)      │
+                                                          └─────────────────────────────┘
+```
+
+---
+
+## 📁 Project Structure & File Guide
+
+| File / Path | Category | Purpose | Actively Used? |
 | :--- | :--- | :--- | :--- |
-| **Authentication & SSO** | `/api/v1/auth/login`, `resolve_employee` | `AuthService.resolve_employee` | ✅ 100% Tested |
-| **Proactive Guidance** | `/api/v1/landing` | `ProactiveService.generate_landing` | ✅ 100% Tested |
-| **Multi-Agent Chat** | `/api/v1/chat`, `converse` | `SupervisorAgent.route` + `SessionService` | ✅ 100% Tested |
-| **Onboarding Checklists**| `/api/v1/onboarding/my-status` | `OnboardingService.get_checklist` | ✅ 100% Tested |
-| **Task Completion** | `/api/v1/onboarding/complete-task` | `OnboardingService.complete_task` | ✅ 100% Tested |
-| **Manager Rollup** | `/api/v1/onboarding/team-progress`| `OnboardingService.get_team_progress` | ✅ 100% Tested |
-| **Knowledge Mesh Search**| `/api/v1/knowledge/search` | `KnowledgeService.search_authorized` | ✅ 100% Tested |
-| **Document Insights** | `/api/v1/knowledge/insights` | `KnowledgeService.get_authorized_insights` | ✅ 100% Tested |
-| **Timesheets Status** | `/api/v1/timesheets/my-status` | `OperationsService.get_timesheet_status` | ✅ 100% Tested |
-| **Incident Management** | `/api/v1/incidents/create` | `OperationsService.create_incident` | ✅ 100% Tested |
-| **Escalation Routing** | `resolve_escalation` | `OperationsService.resolve_escalation` | ✅ 100% Tested |
-| **Persistent Sessions** | `/api/v1/session/history` | `SessionService.get_or_create_session` | ✅ 100% Tested |
+| **`app.config.json`** | Configuration | **Single non-secret configuration file** for GitHub. Contains GCP project ID, Firestore DB name, Google OAuth Client ID, Jira host/project, Salesforce URL, and environment settings. | **Yes** — Loaded on startup by Node.js and Python. |
+| **`.env.example`** | Configuration | Documentation template listing all environment variables and secrets. Never contains real secrets. | **Yes** — Deployment reference. |
+| **`.gitignore`** | Security | Blocks secret files (`.env`), build outputs (`dist/`), `node_modules/`, and `__pycache__/` from Git. | **Yes** — Enforces security boundaries. |
+| **`Dockerfile`** | Deployment | Multi-runtime container definition (Node.js 22 + Python 3) for Google Cloud Run. | **Yes** — Used for Cloud Run container builds. |
+| **`package.json`** | Manifest | Defines dependencies (`express`, `@google/genai`, `cors`, `dotenv`, `esbuild`, `typescript`) and build scripts. | **Yes** — Build and dependency management. |
+| **`tsconfig.json`** | Compiler | TypeScript compiler configuration for client and server code. | **Yes** — Typechecking and build validation. |
+| **`metadata.json`** | Container | AI Studio runtime metadata (app name, capabilities, frame permissions). | **Yes** — Cloud container metadata. |
+| **`server.ts`** | API Gateway | Express.js API gateway listening on port 3000. Handles routing, authentication, Gemini AI fallback, and bridges to Python. | **Yes** — Primary web application server. |
+| **`src/pythonBridge.ts`** | IPC Bridge | Spawns Python 3 backend subprocess (`python3 -m backend.runner`), passes JSON via `stdin`, reads responses from `stdout`. | **Yes** — Connects Node.js to Python backend. |
+| **`src/ui/app.ts`** | Frontend | Client-side TypeScript source. Handles Google Sign-In, onboarding checklist UI, timesheets, incident reporting, and chat. | **Yes** — Source for browser UI. |
+| **`public/index.html`** | Frontend | Single-page application entry point HTML. Injects Google Identity Services SDK and layout components. | **Yes** — Served by Express to browser. |
+| **`public/app.js`** | Frontend | Compiled client-side JavaScript bundle generated from `src/ui/app.ts` via esbuild. | **Yes** — Executed in user's browser. |
+| **`backend/runner.py`** | Python Microservice | Entry point for Python IPC calls. Parses incoming action payloads and routes to the appropriate domain service. | **Yes** — Main execution router. |
+| **`backend/config.py`** | Python Microservice | Configuration loader. Resolves variables in priority order: environment variables / Secret Manager first, `app.config.json` second. | **Yes** — Used across Python modules. |
+| **`backend/firestore.py`** | Database | `FirestoreManager` handling persistent read/write calls to Google Cloud Firestore with safe in-memory fallback. | **Yes** — Cloud Firestore persistence layer. |
+| **`backend/models.py`** | Data Models | Dataclasses and TypedDicts for Employees, Tasks, Timesheets, Incidents, and Chat Messages. | **Yes** — Type definitions. |
+| **`backend/data.py`** | Knowledge Mesh | Embedded enterprise knowledge documents (Security policies, dev setup, benefits) and employee seed directory. | **Yes** — RAG context and employee lookups. |
+| **`backend/auth_policy.py`** | Security | Role-Based Access Control (RBAC) engine verifying permissions for employees, managers, HR, and IT. | **Yes** — Authorization and policy enforcement. |
+| **`backend/services.py`** | Service Layer | Business logic implementation (`AuthService`, `OnboardingService`, `TimesheetService`, `KnowledgeService`, `IncidentService`). | **Yes** — Core application services. |
+| **`backend/agents.py`** | AI Agents | Multi-agent reasoning pipeline (`TriageAgent`, `PolicyLookupAgent`, `ActionRouterAgent`, `SecurityAuditAgent`). | **Yes** — Conversational AI pipeline. |
+| **`backend/state_store.py`** | State | Coordinates session state and synchronizes memory caches with Cloud Firestore. | **Yes** — State management. |
+| **`backend/jira_service.py`** | Integration | Atlassian Jira Cloud REST API integration with automatic Firestore staging fallback. | **Yes** — Incident ticket sync. |
+| **`backend/salesforce_service.py`** | Integration | Salesforce REST API integration with automatic Firestore staging fallback. | **Yes** — Timesheet sync. |
+| **`backend/calendar_service.py`** | Integration | Team availability tracker and Out-Of-Office (OOO) calendar resolver. | **Yes** — Team availability display. |
+| **`bigquery/tables.sql`** | Analytics | DDL schema scripts for enterprise analytics tables in Google BigQuery. | **Reference only** — Analytical schema documentation; not executed at runtime. |
+| **`bigquery/seed_data.sql`** | Analytics | Sample INSERT statements for BigQuery analytics reporting. | **Reference only** — Analytical sample data; not executed at runtime. |
 
 ---
 
-## 🛡️ Core Security Boundaries
+## ⚙️ Configuration & Variable Directory
 
-1. **Zero-Trust Token Identity**:
-   - The frontend never submits `employee_id` in request payloads.
-   - Authentication extracts the verified `sub` (Google Subject ID) or corporate email from the bearer token and resolves the trusted internal `EmployeeRecord`.
-2. **Centralized Role-Based Access Control (RBAC)**:
-   - Centralized authorization tags (`employee`, `manager`, `hr`, `it`) govern access to actions, data, and documents.
-3. **Session Ownership Enforcement**:
-   - Sessions are cryptographically and logically bound to `employee_id`. Cross-employee access attempts are rejected.
-4. **Agent Tool Context Injection**:
-   - Agent functions and tools do not accept `user_id` as an LLM argument; identity is always injected strictly from the authenticated server context.
-5. **Pre-Retrieval Knowledge ACLs**:
-   - Documents and chunks in the Knowledge Mesh are tagged with domain `team` (`Payments`, `Platform`, `HR`, `IT`, `ALL`) and `access_level` (`employee`, `manager`, `hr`, `it`).
-   - Unauthorized chunks are filtered out **prior to retrieval** so sensitive data never enters the LLM context window.
+The application cleanly separates **Non-Secret Configuration** (committed in `app.config.json`) from **Sensitive Secrets** (stored in Google Secret Manager / local `.env`).
 
----
-
-## 🌐 The BigQuery Knowledge Mesh
-
-### What is the Knowledge Mesh?
-The **Knowledge Mesh** is an enterprise data and knowledge fabric that unifies internal documentation, architecture blueprints, standard operating procedures (SOPs), runbooks, policy guidelines, and video onboarding walkthroughs across **BigQuery** and **Google Cloud Storage (GCS)**.
-
-Instead of a flat, unpartitioned vector store, the Knowledge Mesh applies domain-driven governance:
-- **Domain Ownership**: Each knowledge asset is tagged with its owning team (`Payments`, `Platform`, `HR`, `IT`, `ALL`).
-- **Clearance Level**: Assets specify clearance requirements (`employee`, `manager`, `hr`, `it`).
-- **Pre-Retrieval Filtering**: When a user queries the Knowledge Mesh, the system filters candidates by the user's active team and clearance before passing context to Gemini.
-- **Multimodal Video Deep Dive Mapping**: GCS video assets include indexed minute-and-second timestamps for high-friction onboarding milestones.
-
-### BigQuery Schema Overview (`/bigquery/tables.sql`)
-
-| Table Name | Description | Key Attributes |
-| :--- | :--- | :--- |
-| `employees` | Master employee identity directory | `employee_id`, `google_subject`, `email`, `team`, `job_role`, `authorization_role`, `onboarding_track` |
-| `employee_onboarding_tasks` | Task checklists and completion records | `task_id`, `employee_id`, `title`, `status`, `due_days_after_start`, `action_link` |
-| `knowledge_assets` | Catalog metadata for mesh documents & runbooks | `document_id`, `title`, `source`, `gcs_uri`, `team`, `access_level`, `document_type`, `owner` |
-| `knowledge_chunks` | Searchable content chunks with ACL tags | `chunk_id`, `document_id`, `chunk_index`, `content`, `team`, `access_level` |
-| `timesheets` | Weekly employee hours and approvals | `timesheet_id`, `employee_id`, `period_start`, `period_end`, `hours_logged`, `status` |
-| `incidents` | IT / Platform tickets and outage reports | `incident_id`, `created_by`, `category`, `severity`, `status`, `assigned_team` |
-| `team_directory_mesh` | 3-tier point-to-person escalation contacts | `system_domain`, `primary_lead_name`, `primary_on_vacation`, `backup_lead_name`, `general_team_channel` |
-| `agent_telemetry_friction_log` | Streaming audit log for Looker Studio | `log_id`, `user_id`, `user_query_intent`, `resolution_status`, `friction_duration_minutes` |
-
----
-
-## 📖 How-To Guides
-
-### 1. How to Initialize BigQuery Tables
-Execute the DDL script against your Google Cloud BigQuery dataset:
-
-```bash
-# Set your target GCP Project ID
-export GCP_PROJECT_ID="your-gcp-project-id"
-
-# Run DDL schema creation
-bq query --use_legacy_sql=false < bigquery/tables.sql
+```
+┌────────────────────────────────────────────────────────┐
+│                   app.config.json                      │
+│     (Safe for GitHub - Non-Secret Settings)            │
+│  • environment          • jira.host                    │
+│  • gcpProjectId         • jira.projectKey              │
+│  • firestoreDatabaseId  • salesforce.instanceUrl       │
+│  • googleOAuthClientId  • allowedCorporateDomain       │
+└──────────────────────────┬─────────────────────────────┘
+                           │ Baseline defaults
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│             Google Secret Manager / os.environ         │
+│     (NEVER committed to GitHub - Sensitive Secrets)    │
+│  • GEMINI_API_KEY       • JIRA_API_TOKEN               │
+│  • JIRA_EMAIL           • SALESFORCE_ACCESS_TOKEN      │
+└──────────────────────────┬─────────────────────────────┘
+                           │ Injected at Cloud Run runtime
+                           ▼
+              [ Running Container Application ]
 ```
 
-### 2. How to Seed Synthetic Data
-Populate the BigQuery tables with realistic multi-role corporate records:
+### 1. Non-Secret Variables (`app.config.json`)
+
+These variables contain no credentials or private keys and are safe to version control:
+
+| Key in `app.config.json` | Environment Variable Equivalent | Where to Get This Value | Current Value / Example |
+| :--- | :--- | :--- | :--- |
+| `environment` | `ENVIRONMENT` | Choose deployment stage: `development`, `staging`, or `production`. | `"development"` |
+| `allowedCorporateDomain` | `ALLOWED_CORPORATE_DOMAIN` | Your Google Workspace corporate domain (e.g. `yourcompany.com`) or `*` to allow all domains. | `"*"` |
+| `gcpProjectId` | `GCP_PROJECT_ID` | **Google Cloud Console** ➔ Top project dropdown ➔ Copy the **Project ID** (e.g. `gen-lang-client-0448180018` or `my-prod-project`). Or run: `gcloud config get-value project`. | `"gen-lang-client-0448180018"` |
+| `firestoreDatabaseId` | `FIRESTORE_DATABASE_ID` | **GCP Console** ➔ **Firestore** ➔ **Databases**. Use `(default)` if you created a standard database, or the custom database ID if multiple databases exist. | `"ai-studio-onboardingemploy-b1158660-8824-4e90-b842-3a0f086d1796"` |
+| `googleOAuthClientId` | `GOOGLE_OAUTH_CLIENT_ID` | **GCP Console** ➔ **APIs & Services** ➔ **Credentials** ➔ Under **OAuth 2.0 Client IDs**, select your Web Application client (ends with `.apps.googleusercontent.com`). | `"267990013452-k48vsk24b87fcb8pk0c0mlrs47pjqgvf.apps.googleusercontent.com"` |
+| `jira.host` | `JIRA_HOST` | Your Atlassian Jira site URL (e.g. `https://yourcompany.atlassian.net`). | `"https://jira.company.internal"` |
+| `jira.projectKey` | `JIRA_PROJECT_KEY` | **Atlassian Jira** ➔ **Projects** ➔ Project abbreviation key (e.g. `OPS`, `IT`, `HELP`). | `"OPS"` |
+| `salesforce.instanceUrl` | `SALESFORCE_INSTANCE_URL` | **Salesforce Setup** ➔ **Company Settings** ➔ **My Domain** ➔ URL (e.g. `https://yourcompany.my.salesforce.com`). | `"https://salesforce.company.internal"` |
+
+---
+
+### 2. Sensitive Secrets (Google Secret Manager / Local `.env`)
+
+These credentials must **NEVER** be committed to Git. Store them in Google Cloud Secret Manager for Cloud Run deployments, or in a local uncommitted `.env` file for local development:
+
+| Secret Name | Purpose | Where to Obtain Value | How to Create in GCP Secret Manager |
+| :--- | :--- | :--- | :--- |
+| **`GEMINI_API_KEY`** | Powers server-side Gemini 3.6 Flash conversational intelligence. | **Google AI Studio** (https://aistudio.google.com/app/apikey) ➔ Click **"Create API key"**. Or GCP Console Vertex AI credentials. | `echo -n "AIzaSy..." \| gcloud secrets create gemini-api-key --data-file=-` |
+| **`JIRA_EMAIL`** | Account email for Atlassian Jira REST API authentication. | The email address associated with your Atlassian Cloud account. | `echo -n "admin@company.com" \| gcloud secrets create jira-email --data-file=-` |
+| **`JIRA_API_TOKEN`** | API token for Jira ticket creation. | **Atlassian Account Settings** ➔ **Security** ➔ **API tokens** (https://id.atlassian.com/manage-profile/security/api-tokens) ➔ Click **"Create API token"**. | `echo -n "ATATT3x..." \| gcloud secrets create jira-api-token --data-file=-` |
+| **`SALESFORCE_ACCESS_TOKEN`** | OAuth / Personal Token for Salesforce timesheet synchronization. | **Salesforce Settings** ➔ **Reset My Security Token** (combined with password) or Connected App OAuth Bearer token. | `echo -n "00D8X..." \| gcloud secrets create salesforce-token --data-file=-` |
+
+> **Note on Dual-Mode Fallback:** If Jira or Salesforce secrets are omitted, the application will not crash. It will automatically run in **Firestore Staging Mode**, saving valid Jira ADF documents and Salesforce sObjects in Cloud Firestore for later batch synchronization.
+
+---
+
+## 🚀 Step-by-Step Cloud Run Deployment
+
+### 1. Configure GCP Project & APIs
 
 ```bash
-bq query --use_legacy_sql=false < bigquery/seed_data.sql
-```
-
-### 3. How to Ingest New Documents into the Knowledge Mesh
-To add a new document or runbook to the Knowledge Mesh:
-
-1. **Upload the Asset to GCS**:
-   ```bash
-   gcloud storage cp docs/payments_runbook_2026.md gs://your-knowledge-bucket/engineering/payments/
-   ```
-
-2. **Register the Asset in `knowledge_assets`**:
-   ```sql
-   INSERT INTO `your-project.employee_ai.knowledge_assets`
-   (document_id, title, source, gcs_uri, team, access_level, document_type, owner, description, created_at, updated_at)
-   VALUES
-   ('DOC-PAY-002', 'Payments Settlement Runbook', 'Payments Guild',
-    'gs://your-knowledge-bucket/engineering/payments/payments_runbook_2026.md',
-    'Payments', 'employee', 'RUNBOOK', 'priya.nair@company.com',
-    'Reconciliation and settlement ledger procedures', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP());
-   ```
-
-3. **Insert Searchable Chunks into `knowledge_chunks`**:
-   ```sql
-   INSERT INTO `your-project.employee_ai.knowledge_chunks`
-   (chunk_id, document_id, chunk_index, content, team, access_level)
-   VALUES
-   ('CHK-PAY-002-1', 'DOC-PAY-002', 0,
-    '# Settlement Procedures: Daily batch settles at 23:00 UTC via Cloud Tasks into BigQuery.',
-    'Payments', 'employee');
-   ```
-
-### 4. How to Run Locally
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Configure environment variables (.env)
-cp .env.example .env
-# Edit .env and supply your GEMINI_API_KEY (optional for local mock mode)
-
-# 3. Start development server with TypeScript watch mode
-npm run dev
-
-# 4. Or build and start production bundle
-npm run build
-npm start
-```
-The server will start at `http://localhost:3000`.
-
----
-
-## 👥 Personas & Testing Scenarios
-
-Use the built-in Persona Switcher on the login screen to test role-specific scenarios:
-
-| Employee ID | Name | Role | Team | Authorization | Testing Scenario |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `EMP-2026-001` | **Rahul Sharma** | SWE I | Payments | `employee` | **Day-1 Onboarding**: Interactive checklist, buddy intro (`Priya Nair`), Cloud SQL proxy setup, video timestamp markers (04:15 & 18:45). |
-| `EMP-2026-002` | **Maya Lin** | Intern | Platform | `employee` | **Day-1 Intern**: GKE cluster credentials, security training milestone. |
-| `EMP-2026-003` | **Liam Vance** | SWE II | Payments | `employee` | **Operations**: Overdue timesheet reminder, sandbox PR submission. |
-| `EMP-2026-005` | **Alex Chen** | Director | Platform | `manager` | **Escalation & Leadership**: Cloud SQL primary on-call point of contact. |
-| `EMP-2026-009` | **Amanda Walker** | Senior Specialist | HR | `hr` | **HR Clearance**: Access to confidential salary & equity matrices and performance review playbooks. |
-| `EMP-2026-010` | **Sarah Jenkins** | Manager | Payments | `manager` | **Manager Rollup**: Queries team onboarding progress across direct reports. |
-
----
-
-## 🤖 Multi-Agent Specialization
-
-| Agent | Trigger Patterns | Purpose & Deliverables |
-| :--- | :--- | :--- |
-| **Supervisor Agent** | All inbound requests | Master coordinator: parses intent, evaluates security perimeter, invokes Gemini 2.5 Flash for synthesis, or delegates to sub-agents. |
-| **Onboarding Specialist** | `checklist`, `tasks`, `buddy`, `day 1`, `team progress` | Day-1 progress tracking, task completion (`/complete-task`), team rollups for managers. |
-| **Operations Agent** | `timesheet`, `hours`, `lead`, `escalation`, `incident`, `ticket` | Timesheet status lookup, 3-tier point-to-person lead routing with vacation fallbacks, IT ticket creation. |
-| **Knowledge Mesh Agent** | `doc`, `runbook`, `manual`, `policy`, `search`, `architecture` | Pre-retrieval ACL filtering across company standards, runbooks, and team blueprints. |
-| **Code Mentor Agent** | `code`, `log`, `print`, `lint`, `standard`, `proxy` | Enforces zero raw print statement policy, structured JSON logging with correlation IDs, and Cloud SQL Auth Proxy standards. |
-
----
-
-## ☁️ Google Cloud Run Deployment Guide (Option A: Secret Manager Injection)
-
-This step-by-step deployment guide uses **Google Cloud Secret Manager** with **Cloud Run native secret injection (Option A)**. Your `GEMINI_API_KEY` is securely fetched from Secret Manager by Cloud Run at container startup and injected directly into `process.env.GEMINI_API_KEY`, keeping all credentials out of code and build artifacts.
-
----
-
-### Step 1: Set Up Shell Environment & Project Variables
-
-Open your terminal or Google Cloud Shell and set your configuration variables:
-
-```bash
-# Set your target Google Cloud Project ID and Region
-export GCP_PROJECT_ID="your-gcp-project-id"
+export GCP_PROJECT_ID="gen-lang-client-0448180018"
 export GCP_REGION="us-central1"
 export SERVICE_NAME="onboarding-assistant"
-export ARTIFACT_REPO="patchamomma-repo"
+export ARTIFACT_REPO="enterprise-apps"
 
-# Set active project
 gcloud config set project ${GCP_PROJECT_ID}
-```
 
----
-
-### Step 2: Enable Required Google Cloud APIs
-
-Ensure the necessary services are enabled on your Google Cloud Project:
-
-```bash
+# Enable required Google Cloud APIs
 gcloud services enable \
   run.googleapis.com \
   secretmanager.googleapis.com \
   artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com
+  cloudbuild.googleapis.com \
+  firestore.googleapis.com
 ```
 
----
-
-### Step 3: Store Gemini API Key in Google Cloud Secret Manager
-
-Create the secret named `gemini-api-key` and upload your key as the initial version:
+### 2. Store Secrets in Google Secret Manager
 
 ```bash
-# 1. Create the secret container in Secret Manager
-gcloud secrets create gemini-api-key \
-  --replication-policy="automatic"
+# 1. Gemini API Key (Required for AI chat)
+echo -n "YOUR_GEMINI_API_KEY" | gcloud secrets create gemini-api-key \
+  --replication-policy="automatic" \
+  --data-file=-
 
-# 2. Add your Gemini API key value (replace with your actual Gemini API key)
-echo -n "AIzaSyYourActualGeminiAPIKeyHere" | gcloud secrets versions add gemini-api-key --data-file=-
+# 2. (Optional) Jira Credentials for Live Sync
+echo -n "YOUR_JIRA_EMAIL" | gcloud secrets create jira-email \
+  --replication-policy="automatic" \
+  --data-file=-
+
+echo -n "YOUR_JIRA_API_TOKEN" | gcloud secrets create jira-api-token \
+  --replication-policy="automatic" \
+  --data-file=-
+
+# 3. (Optional) Salesforce Credentials for Live Sync
+echo -n "YOUR_SALESFORCE_ACCESS_TOKEN" | gcloud secrets create salesforce-token \
+  --replication-policy="automatic" \
+  --data-file=-
 ```
 
-*(Optional: If you ever rotate your key, simply run `echo -n "NEW_KEY" | gcloud secrets versions add gemini-api-key --data-file=-`. Cloud Run's `:latest` reference will automatically use the newest version on subsequent container starts).*
-
----
-
-### Step 4: Create a Dedicated Cloud Run Service Account & Grant Access
-
-In accordance with least-privilege security principles, create a dedicated service account and grant it permission to read the secret:
+### 3. Configure Service Account Permissions
 
 ```bash
-# 1. Create the dedicated service account
+# Create dedicated Cloud Run Service Account
 gcloud iam service-accounts create onboarding-assistant-sa \
-  --display-name="Onboarding Assistant Cloud Run Service Account"
+  --display-name="Onboarding Assistant Runtime SA"
 
-# 2. Grant Secret Accessor role on the specific secret
-gcloud secrets add-iam-policy-binding gemini-api-key \
+# Grant Secret Manager Secret Accessor role
+gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
   --member="serviceAccount:onboarding-assistant-sa@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
+
+# Grant Cloud Datastore User role (for Cloud Firestore access)
+gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
+  --member="serviceAccount:onboarding-assistant-sa@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/datastore.user"
 ```
 
----
-
-### Step 5: Create Artifact Registry Repository & Build Container
+### 4. Build and Deploy to Cloud Run
 
 ```bash
-# 1. Create Artifact Registry Docker repository (if it doesn't already exist)
+# 1. Create Artifact Registry Docker repository (one-time setup)
 gcloud artifacts repositories create ${ARTIFACT_REPO} \
   --repository-format=docker \
-  --location=${GCP_REGION} \
-  --description="Docker repository for Onboarding Assistant"
+  --location=${GCP_REGION}
 
-# 2. Build and push container image using Google Cloud Build
+# 2. Build container image using Cloud Build
 gcloud builds submit \
   --tag ${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${SERVICE_NAME}:latest .
-```
 
----
-
-### Step 6: Deploy to Google Cloud Run with Secret Injection
-
-Deploy the service to Cloud Run. The `--set-secrets` parameter binds the Secret Manager secret directly to the container's `GEMINI_API_KEY` environment variable:
-
-```bash
+# 3. Deploy to Cloud Run with Secret Manager binding
 gcloud run deploy ${SERVICE_NAME} \
   --image ${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${SERVICE_NAME}:latest \
   --platform managed \
@@ -325,41 +231,26 @@ gcloud run deploy ${SERVICE_NAME} \
   --service-account "onboarding-assistant-sa@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
   --port 3000 \
   --allow-unauthenticated \
-  --set-env-vars ENVIRONMENT=production,ALLOWED_CORPORATE_DOMAIN=company.com \
-  --set-secrets GEMINI_API_KEY=gemini-api-key:latest
+  --set-secrets="GEMINI_API_KEY=gemini-api-key:latest,JIRA_API_TOKEN=jira-api-token:latest,SALESFORCE_ACCESS_TOKEN=salesforce-token:latest"
 ```
 
 ---
 
-### Step 7: Verify the Live Deployment
-
-Retrieve the live Service URL and verify the health and chat endpoints:
+## 🛠️ Local Development
 
 ```bash
-# 1. Get the assigned HTTPS URL
-export SERVICE_URL=$(gcloud run services describe ${SERVICE_NAME} --platform managed --region ${GCP_REGION} --format 'value(status.url)')
-echo "Service deployed at: ${SERVICE_URL}"
+# 1. Install dependencies
+npm install
 
-# 2. Test Health Endpoint
-curl -i "${SERVICE_URL}/health"
+# 2. (Optional) Set up local secrets in .env for development
+cp .env.example .env
+# Edit .env with your local GEMINI_API_KEY
 
-# 3. Test Landing Screen with Day-1 Persona Bearer Token
-curl -X POST "${SERVICE_URL}/api/v1/landing" \
-  -H "Authorization: Bearer mock-google-token-rahul" \
-  -H "Content-Type: application/json"
+# 3. Compile frontend bundle
+npm run build:ui
 
-# 4. Open the Web Portal in your browser
-echo "Open ${SERVICE_URL} in your browser to interact with the visual assistant."
+# 4. Start local development server
+npm run dev
 ```
 
----
-
-## ❓ FAQ: Architecture & Framework Choice
-
-### Why TypeScript & Express instead of Python & FastAPI?
-- **AI Studio & Cloud Run Optimized**: AI Studio's browser runtime uses a Node.js sandbox that provides an instantaneous, interactive dev-server preview on port 3000 without requiring Python virtual environments, pip caching, or dual-process orchestration.
-- **Single Cohesive Codebase**: The frontend UI (`public/index.html`) and backend API (`server.ts`) share common TypeScript interfaces (`src/types.ts`), eliminating schema duplication between client and server.
-- **Fast Cold Starts on Cloud Run**: With `esbuild`, the entire application compiles into a single bundled JavaScript file (`dist/server.cjs`). When Cloud Run scales from zero instances, Node 22 starts in milliseconds compared to the module import overhead of heavy Python frameworks.
-- **Simplicity & Zero Complex Dependencies**: The server does not require external ASGI server wrappers (such as Uvicorn or Gunicorn) or complex pip wheels. It starts cleanly with `node dist/server.cjs`.
-- **First-Class Official Gemini SDK**: The official `@google/genai` TypeScript SDK provides clean, native typing for Gemini 2.5 Flash with minimal footprint.
-
+Visit `http://localhost:3000` to access the application.

@@ -4,8 +4,14 @@ Company AI Assistant: Python Backend CLI & RPC Dispatcher
 Accepts JSON payload on stdin, executes domain services and multi-agent logic in pure Python, returns JSON on stdout.
 """
 import sys
+import os
 import json
 from typing import Dict, Any
+
+# Ensure project root is on sys.path
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 from backend.models import (
     EmployeeRecord, AuthorizationRole, TaskStatus, IncidentSeverity
