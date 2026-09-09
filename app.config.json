@@ -2,6 +2,7 @@
   "environment": "development",
   "allowedCorporateDomain": "*",
   "gcpProjectId": "patchamomma-505416",
+  "gcpRegion": "us-central1",
   "firebaseProjectId": "patchamomma-505416",
   "firestoreDatabaseId": "onboarding-employee-assistant-firestore-database",
   "bigqueryDataset": "employee_ai",

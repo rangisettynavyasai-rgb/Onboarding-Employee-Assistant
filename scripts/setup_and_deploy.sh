@@ -8,7 +8,7 @@ set -euo pipefail
 # ==============================================================================
 
 PROJECT_ID="${GCP_PROJECT_ID:-patchamomma-505416}"
-REGION="${GCP_REGION:-asia-southeast1}"
+REGION="${GCP_REGION:-us-central1}"
 SERVICE_NAME="onboarding-employee-assistant"
 SA_NAME="onboarding-assistant-sa"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -141,7 +141,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --region="${REGION}" \
   --service-account="${SA_EMAIL}" \
   --allow-unauthenticated \
-  --set-env-vars="GCP_PROJECT_ID=${PROJECT_ID},BIGQUERY_DATASET=${BQ_DATASET},GCS_BUCKET=${GCS_BUCKET},FIRESTORE_DATABASE_ID=${FIRESTORE_DB},ENVIRONMENT=production" \
+  --set-env-vars="GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},BIGQUERY_DATASET=${BQ_DATASET},GCS_BUCKET=${GCS_BUCKET},FIRESTORE_DATABASE_ID=${FIRESTORE_DB},ENVIRONMENT=production" \
   --port=3000
 
 echo ""

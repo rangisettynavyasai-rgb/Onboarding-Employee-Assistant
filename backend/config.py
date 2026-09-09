@@ -46,6 +46,7 @@ def get_config_val(key: str, default: Any = None) -> Any:
         "ENVIRONMENT": cfg.get("environment"),
         "ALLOWED_CORPORATE_DOMAIN": cfg.get("allowedCorporateDomain"),
         "GCP_PROJECT_ID": cfg.get("gcpProjectId"),
+        "GCP_REGION": cfg.get("gcpRegion", "us-central1"),
         "FIREBASE_PROJECT_ID": cfg.get("firebaseProjectId") or cfg.get("gcpProjectId"),
         "FIRESTORE_DATABASE_ID": cfg.get("firestoreDatabaseId"),
         "BIGQUERY_DATASET": cfg.get("bigqueryDataset", "employee_ai"),
