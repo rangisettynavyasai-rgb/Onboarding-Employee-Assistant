@@ -1,71 +1,61 @@
 #!/usr/bin/env python3
 """
-Company AI Assistant: Enterprise Python Firestore Persistence Layer
+Company AI Assistant: Enterprise Python Cloud Firestore Persistence Layer
 Direct integration with Google Cloud Firestore database:
 ai-studio-onboardingemploy-b1158660-8824-4e90-b842-3a0f086d1796
+No local files or in-memory fallback caches. All data is read and written directly
+to the Cloud Firestore database via the Firestore REST API.
 """
 
 import json
 import os
+import sys
 import urllib.request
 import urllib.parse
+import urllib.error
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from backend.config import get_config_val
 
 class FirestoreManager:
     """
-    Manages persistent Firestore read/write operations for employee sessions,
-    chat histories, and task statuses via the Firestore REST API and in-memory fallback.
+    Manages persistent Cloud Firestore read/write operations for employee sessions,
+    chat histories, checklists, timesheets, and support incidents directly against Cloud Firestore.
     """
 
     def __init__(self):
-        self.state_file = os.path.join(os.getcwd(), ".app_state.json")
-        self.project_id = os.environ.get("FIREBASE_PROJECT_ID", "")
-        self.database_id = os.environ.get("FIRESTORE_DATABASE_ID", "ai-studio-onboardingemploy-b1158660-8824-4e90-b842-3a0f086d1796")
-        self.api_key = os.environ.get("FIREBASE_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
-        self._memory_sessions: Dict[str, Dict[str, Any]] = {}
-        self._memory_tasks: Dict[str, List[str]] = {}
-        self._load_config()
-        self._load_local_state()
+        self.project_id = get_config_val("GCP_PROJECT_ID", "patchamomma-505416")
+        self.database_id = get_config_val("FIRESTORE_DATABASE_ID", "onboarding-employee-assistant-firestore-database")
+        self.api_key = os.environ.get("FIREBASE_API_KEY", "")
+        self._cached_token: Optional[str] = None
+        self._token_expiry: float = 0.0
 
-    def _load_local_state(self) -> None:
-        if os.path.exists(self.state_file):
-            try:
-                with open(self.state_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, dict):
-                        if "tasks" in data and isinstance(data["tasks"], dict):
-                            self._memory_tasks = data["tasks"]
-                        if "sessions" in data and isinstance(data["sessions"], dict):
-                            self._memory_sessions = data["sessions"]
-            except Exception as e:
-                print(f"[StateStore] Notice loading local state: {e}")
+    def _get_auth_token(self) -> Optional[str]:
+        """
+        Retrieves GCP OAuth2 token from instance metadata server in Cloud Run if available.
+        """
+        if os.environ.get("GCP_ACCESS_TOKEN"):
+            return os.environ.get("GCP_ACCESS_TOKEN")
 
-    def _save_local_state(self) -> None:
+        import time
+        now = time.time()
+        if self._cached_token and now < self._token_expiry:
+            return self._cached_token
+
         try:
-            temp_file = f"{self.state_file}.tmp"
-            data = {
-                "tasks": self._memory_tasks,
-                "sessions": self._memory_sessions,
-                "updated_at": datetime.utcnow().isoformat() + "Z",
-            }
-            with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            os.replace(temp_file, self.state_file)
-        except Exception as e:
-            print(f"[StateStore] Warning saving local state: {e}")
-
-    def _load_config(self) -> None:
-        app_cfg_path = os.path.join(os.getcwd(), "app.config.json")
-        if os.path.exists(app_cfg_path):
-            try:
-                with open(app_cfg_path, "r", encoding="utf-8") as f:
-                    app_cfg = json.load(f)
-                    self.project_id = os.environ.get("GCP_PROJECT_ID") or os.environ.get("FIREBASE_PROJECT_ID") or app_cfg.get("gcpProjectId", self.project_id)
-                    self.database_id = os.environ.get("FIRESTORE_DATABASE_ID") or app_cfg.get("firestoreDatabaseId", self.database_id)
-                    self.api_key = os.environ.get("FIREBASE_API_KEY", self.api_key)
-            except Exception as e:
-                print(f"[Firestore] Notice: could not parse {app_cfg_path}: {e}")
+            req = urllib.request.Request(
+                "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+                headers={"Metadata-Flavor": "Google"}
+            )
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                token = data.get("access_token")
+                expires_in = data.get("expires_in", 3600)
+                self._cached_token = token
+                self._token_expiry = now + expires_in - 60
+                return token
+        except Exception:
+            return None
 
     @property
     def base_url(self) -> str:
@@ -73,6 +63,61 @@ class FirestoreManager:
             f"https://firestore.googleapis.com/v1/projects/{self.project_id}/"
             f"databases/{self.database_id}/documents"
         )
+
+    def _execute_request(self, path: str, method: str = "GET", payload: Optional[bytes] = None) -> Optional[Dict[str, Any]]:
+        """
+        Executes a Firestore REST API request directly to Google Cloud Firestore.
+        Uses OAuth2 Bearer token in Cloud Run, or direct database access.
+        """
+        clean_path = path.lstrip("/")
+        headers = {"Content-Type": "application/json"} if payload else {}
+        token = self._get_auth_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        url = f"{self.base_url}/{clean_path}"
+
+        try:
+            req = urllib.request.Request(url, data=payload, method=method, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                raw = resp.read().decode("utf-8")
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as he:
+            if he.code != 404:
+                print(f"[Firestore] HTTP {he.code} on {method} {clean_path}: {he.reason}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Firestore] Network error on {method} {clean_path}: {e}", file=sys.stderr)
+
+        return None
+
+    def test_connection(self) -> Dict[str, Any]:
+        """
+        Tests the live connection to Cloud Firestore and reports collection status.
+        """
+        result: Dict[str, Any] = {
+            "project_id": self.project_id,
+            "database_id": self.database_id,
+            "connected": False,
+            "collections": {},
+            "status": "Checking..."
+        }
+        try:
+            checklists_res = self._execute_request("checklists")
+            if checklists_res is not None:
+                result["connected"] = True
+                result["status"] = "Connected successfully to Cloud Firestore"
+                chk_docs = checklists_res.get("documents", [])
+                result["collections"]["checklists"] = len(chk_docs)
+
+                sess_res = self._execute_request("sessions")
+                if sess_res is not None:
+                    result["collections"]["sessions"] = len(sess_res.get("documents", []))
+            else:
+                result["status"] = "Unable to connect to Firestore database"
+        except Exception as e:
+            result["status"] = f"Connection check failed: {str(e)}"
+
+        return result
 
     def _python_to_firestore_value(self, val: Any) -> Dict[str, Any]:
         if val is None:
@@ -115,90 +160,49 @@ class FirestoreManager:
             return {k: self._firestore_to_python_value(v) for k, v in fields.items()}
         return None
 
+    # --- Chat Sessions in Cloud Firestore ---
     def save_session(self, session_id: str, employee_id: str, history: List[Dict[str, Any]]) -> bool:
         """
-        Saves chat history and metadata to Firestore collection 'sessions' and local state.
+        Saves chat history and metadata directly to Cloud Firestore collection 'sessions'.
         """
-        self._load_local_state()
         doc_data = {
             "session_id": session_id,
             "employee_id": employee_id,
             "history": history,
             "updated_at": datetime.utcnow().isoformat() + "Z"
         }
-        self._memory_sessions[session_id] = doc_data
-        self._save_local_state()
-
-        if not self.api_key:
-            return True
-
-        url = f"{self.base_url}/sessions/{session_id}?key={self.api_key}"
         fields = {k: self._python_to_firestore_value(v) for k, v in doc_data.items()}
         payload = json.dumps({"fields": fields}).encode("utf-8")
-
-        req = urllib.request.Request(url, data=payload, method="PATCH", headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                return resp.status in (200, 201)
-        except Exception:
-            return True
+        resp = self._execute_request(f"sessions/{session_id}", method="PATCH", payload=payload)
+        return resp is not None
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
-        Retrieves chat history and session data from Firestore or cache.
+        Retrieves chat history and session data directly from Cloud Firestore collection 'sessions'.
         """
-        self._load_local_state()
-        if not self.api_key:
-            return self._memory_sessions.get(session_id)
+        res = self._execute_request(f"sessions/{session_id}", method="GET")
+        if res and "fields" in res:
+            return {k: self._firestore_to_python_value(v) for k, v in res["fields"].items()}
+        return None
 
-        url = f"{self.base_url}/sessions/{session_id}?key={self.api_key}"
-        req = urllib.request.Request(url, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                fields = data.get("fields", {})
-                res = {k: self._firestore_to_python_value(v) for k, v in fields.items()}
-                self._memory_sessions[session_id] = res
-                self._save_local_state()
-                return res
-        except Exception:
-            return self._memory_sessions.get(session_id)
-
-    # --- Checklists Persistence ---
+    # --- Checklists & Onboarding Tasks in Cloud Firestore ---
     def get_completed_tasks(self, employee_id: str) -> List[str]:
-        self._load_local_state()
-        cache_key = f"chk_{employee_id}"
-        if cache_key in self._memory_tasks:
-            return self._memory_tasks[cache_key]
-
-        if not self.api_key:
-            return self._memory_tasks.get(cache_key, [])
-
-        url = f"{self.base_url}/checklists/{employee_id}?key={self.api_key}"
-        req = urllib.request.Request(url, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                fields = data.get("fields", {})
-                parsed = {k: self._firestore_to_python_value(v) for k, v in fields.items()}
-                tasks = parsed.get("tasks", [])
-                self._memory_tasks[cache_key] = tasks
-                self._save_local_state()
-                return tasks
-        except Exception:
-            return self._memory_tasks.get(cache_key, [])
+        """
+        Retrieves completed onboarding task IDs directly from Cloud Firestore collection 'checklists'.
+        """
+        res = self._execute_request(f"checklists/{employee_id}", method="GET")
+        if res and "fields" in res:
+            parsed = {k: self._firestore_to_python_value(v) for k, v in res["fields"].items()}
+            return parsed.get("tasks", [])
+        return []
 
     def mark_task_completed(self, employee_id: str, task_id: str) -> None:
-        self._load_local_state()
+        """
+        Adds a completed task ID to Cloud Firestore collection 'checklists/{employee_id}'.
+        """
         tasks = list(self.get_completed_tasks(employee_id))
         if task_id not in tasks:
             tasks.append(task_id)
-        cache_key = f"chk_{employee_id}"
-        self._memory_tasks[cache_key] = tasks
-        self._save_local_state()
-
-        if not self.api_key:
-            return
 
         doc_data = {
             "employee_id": employee_id,
@@ -206,21 +210,18 @@ class FirestoreManager:
             "completed_count": len(tasks),
             "updated_at": datetime.utcnow().isoformat() + "Z"
         }
-        url = f"{self.base_url}/checklists/{employee_id}?key={self.api_key}"
         fields = {k: self._python_to_firestore_value(v) for k, v in doc_data.items()}
         payload = json.dumps({"fields": fields}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, method="PATCH", headers={"Content-Type": "application/json"})
-        try:
-            urllib.request.urlopen(req, timeout=3)
-        except Exception as e:
-            print(f"[Firestore] Notice: Could not update checklist for {employee_id} via remote API: {e}")
+        self._execute_request(f"checklists/{employee_id}", method="PATCH", payload=payload)
 
     def is_task_completed(self, employee_id: str, task_id: str) -> bool:
         return task_id in self.get_completed_tasks(employee_id)
 
-    # --- Timesheets Persistence ---
+    # --- Timesheets in Cloud Firestore ---
     def save_timesheet(self, employee_id: str, hours: float, notes: str, salesforce_id: str = "") -> Dict[str, Any]:
-        self._load_local_state()
+        """
+        Saves weekly timesheet submission directly to Cloud Firestore collection 'timesheets/{employee_id}'.
+        """
         doc_data = {
             "timesheet_id": f"ts_{employee_id}",
             "employee_id": employee_id,
@@ -231,113 +232,58 @@ class FirestoreManager:
             "salesforce_id": salesforce_id,
             "submitted_at": datetime.utcnow().isoformat() + "Z"
         }
-        self._memory_sessions[f"ts_{employee_id}"] = doc_data
-        self._save_local_state()
-
-        if not self.api_key:
-            return doc_data
-
-        url = f"{self.base_url}/timesheets/{employee_id}?key={self.api_key}"
         fields = {k: self._python_to_firestore_value(v) for k, v in doc_data.items()}
         payload = json.dumps({"fields": fields}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, method="PATCH", headers={"Content-Type": "application/json"})
-        try:
-            urllib.request.urlopen(req, timeout=3)
-        except Exception as e:
-            print(f"[Firestore] Notice: Could not save timesheet for {employee_id} via remote API: {e}")
-
+        self._execute_request(f"timesheets/{employee_id}", method="PATCH", payload=payload)
         return doc_data
 
     def get_timesheet(self, employee_id: str) -> Optional[Dict[str, Any]]:
-        self._load_local_state()
-        cached = self._memory_sessions.get(f"ts_{employee_id}")
-        if cached:
-            return cached
+        """
+        Retrieves timesheet directly from Cloud Firestore collection 'timesheets/{employee_id}'.
+        """
+        res = self._execute_request(f"timesheets/{employee_id}", method="GET")
+        if res and "fields" in res:
+            return {k: self._firestore_to_python_value(v) for k, v in res["fields"].items()}
+        return None
 
-        if not self.api_key:
-            return None
-
-        url = f"{self.base_url}/timesheets/{employee_id}?key={self.api_key}"
-        req = urllib.request.Request(url, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                fields = data.get("fields", {})
-                res = {k: self._firestore_to_python_value(v) for k, v in fields.items()}
-                self._memory_sessions[f"ts_{employee_id}"] = res
-                self._save_local_state()
-                return res
-        except Exception:
-            return None
-
-    # --- Incidents Persistence ---
+    # --- Incidents in Cloud Firestore ---
     def add_incident(self, incident: Dict[str, Any]) -> None:
-        self._load_local_state()
+        """
+        Saves an incident ticket directly to Cloud Firestore collection 'incidents/{incident_id}'.
+        """
         inc_id = incident.get("incident_id") or f"inc_{int(datetime.utcnow().timestamp() * 1000)}"
         incident["incident_id"] = inc_id
         if "created_at" not in incident:
             incident["created_at"] = datetime.utcnow().isoformat() + "Z"
 
-        if "_incidents_list" not in self._memory_sessions or not isinstance(self._memory_sessions["_incidents_list"], list):
-            self._memory_sessions["_incidents_list"] = []
-        self._memory_sessions["_incidents_list"].append(incident)
-        self._save_local_state()
-
-        if not self.api_key:
-            return
-
-        url = f"{self.base_url}/incidents/{inc_id}?key={self.api_key}"
         fields = {k: self._python_to_firestore_value(v) for k, v in incident.items()}
         payload = json.dumps({"fields": fields}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, method="PATCH", headers={"Content-Type": "application/json"})
-        try:
-            urllib.request.urlopen(req, timeout=3)
-        except Exception as e:
-            print(f"[Firestore] Notice: Could not save incident {inc_id} via remote API: {e}")
+        self._execute_request(f"incidents/{inc_id}", method="PATCH", payload=payload)
 
     def get_all_incidents(self) -> List[Dict[str, Any]]:
-        self._load_local_state()
-        cached = self._memory_sessions.get("_incidents_list")
-        if cached and isinstance(cached, list):
-            return cached
+        """
+        Retrieves all incident tickets directly from Cloud Firestore collection 'incidents'.
+        """
+        res = self._execute_request("incidents", method="GET")
+        if res and "documents" in res:
+            result = []
+            for doc in res["documents"]:
+                fields = doc.get("fields", {})
+                parsed = {k: self._firestore_to_python_value(v) for k, v in fields.items()}
+                result.append(parsed)
+            return result
+        return []
 
-        if not self.api_key:
-            return []
-
-        url = f"{self.base_url}/incidents?key={self.api_key}"
-        req = urllib.request.Request(url, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                docs = data.get("documents", [])
-                result = []
-                for doc in docs:
-                    fields = doc.get("fields", {})
-                    parsed = {k: self._firestore_to_python_value(v) for k, v in fields.items()}
-                    result.append(parsed)
-                self._memory_sessions["_incidents_list"] = result
-                self._save_local_state()
-                return result
-        except Exception:
-            return []
-
-    # --- Employees Persistence ---
+    # --- Employee Operational Profile in Cloud Firestore ---
     def save_employee(self, employee_data: Dict[str, Any]) -> None:
-        self._load_local_state()
+        """
+        Saves or updates employee profile in Cloud Firestore collection 'employees/{employee_id}'.
+        """
         emp_id = employee_data.get("employee_id")
         if not emp_id:
             return
         clean_id = emp_id.replace(" ", "_")
-        self._memory_sessions[f"emp_{clean_id}"] = employee_data
-        email = employee_data.get("email", "").lower()
-        if email:
-            self._memory_sessions[f"emp_email_{email}"] = employee_data
-        self._save_local_state()
 
-        if not self.api_key:
-            return
-
-        url = f"{self.base_url}/employees/{clean_id}?key={self.api_key}"
         store_fields = {
             "employee_id": emp_id,
             "name": employee_data.get("name", ""),
@@ -352,48 +298,17 @@ class FirestoreManager:
         }
         fields = {k: self._python_to_firestore_value(v) for k, v in store_fields.items()}
         payload = json.dumps({"fields": fields}).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, method="PATCH", headers={"Content-Type": "application/json"})
-        try:
-            urllib.request.urlopen(req, timeout=3)
-        except Exception as e:
-            print(f"[Firestore] Notice: Could not save employee {emp_id} via remote API: {e}")
+        self._execute_request(f"employees/{clean_id}", method="PATCH", payload=payload)
 
     def get_employee(self, employee_id: str) -> Optional[Dict[str, Any]]:
-        self._load_local_state()
+        """
+        Retrieves employee profile from Cloud Firestore collection 'employees/{employee_id}'.
+        """
         clean_id = employee_id.replace(" ", "_")
-        cached = self._memory_sessions.get(f"emp_{clean_id}")
-        if cached:
-            return cached
-
-        if not self.api_key:
-            return None
-
-        url = f"{self.base_url}/employees/{clean_id}?key={self.api_key}"
-        req = urllib.request.Request(url, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                fields = data.get("fields", {})
-                res = {k: self._firestore_to_python_value(v) for k, v in fields.items()}
-                self._memory_sessions[f"emp_{clean_id}"] = res
-                self._save_local_state()
-                return res
-        except Exception:
-            return None
-
-    def lookup_employee_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        self._load_local_state()
-        clean_email = email.strip().lower()
-        cached = self._memory_sessions.get(f"emp_email_{clean_email}")
-        if cached:
-            return cached
-        # Check all cached employees
-        for k, v in self._memory_sessions.items():
-            if k.startswith("emp_") and isinstance(v, dict):
-                if v.get("email", "").lower() == clean_email:
-                    return v
+        res = self._execute_request(f"employees/{clean_id}", method="GET")
+        if res and "fields" in res:
+            return {k: self._firestore_to_python_value(v) for k, v in res["fields"].items()}
         return None
 
-
-# Global singleton instance
+# Singleton instance
 firestore_db = FirestoreManager()

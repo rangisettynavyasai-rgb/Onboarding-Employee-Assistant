@@ -174,12 +174,19 @@ def main():
             access_token = payload.get("access_token")
             from backend.calendar_service import CalendarService
             output = CalendarService.get_out_of_office_status(access_token)
-        elif action == "integration_status":
+        elif action in ["integration_status", "test_connections"]:
             from backend.jira_service import JiraService
             from backend.salesforce_service import SalesforceService
             from backend.calendar_service import CalendarService
+            from backend.firestore import firestore_db
+            from backend.bigquery_service import BigQueryService
+            from backend.gcs_service import GCSService
+            from backend.config import get_secret_ids
             access_token = payload.get("access_token")
             output = {
+                "firestore": firestore_db.test_connection(),
+                "bigquery": BigQueryService.test_connection(),
+                "gcs": GCSService.test_connection(),
                 "jira": {
                     "site_url": JiraService.get_site_url(),
                     "configured": JiraService.is_configured(),
@@ -190,6 +197,13 @@ def main():
                     "configured": SalesforceService.is_configured(),
                 },
                 "calendar": CalendarService.get_out_of_office_status(access_token),
+                "secrets": {
+                    env_var: {
+                        "secret_id": sec_id,
+                        "configured": bool(os.environ.get(env_var, "").strip()),
+                    }
+                    for env_var, sec_id in get_secret_ids().items()
+                },
             }
         else:
             output = {"error": f"Unknown action: {action}"}

@@ -39,6 +39,8 @@ from backend.data import (
 from backend.auth_policy import can_access_chunk, is_manager_or_hr
 from backend.firestore import firestore_db
 import backend.state_store as state_store
+from backend.bigquery_service import BigQueryService
+from backend.gcs_service import GCSService
 from backend.jira_service import JiraService
 from backend.salesforce_service import SalesforceService
 from backend.calendar_service import CalendarService
@@ -125,12 +127,62 @@ class AuthService:
         else:
             clean_token = clean_token.strip()
 
-        # 1. Direct mock token lookup
+        # 1. Direct BigQuery employee lookup
+        try:
+            bq_emp = BigQueryService.get_employee(clean_token)
+            if bq_emp:
+                return EmployeeRecord(
+                    employee_id=bq_emp.get("employee_id", clean_token),
+                    google_subject=bq_emp.get("google_subject", ""),
+                    email=bq_emp.get("email", ""),
+                    name=bq_emp.get("name", ""),
+                    department=bq_emp.get("department", "Engineering"),
+                    team=bq_emp.get("team", "Payments"),
+                    job_role=bq_emp.get("job_role", "Software Engineer"),
+                    authorization_role=AuthorizationRole(bq_emp.get("authorization_role", "employee")),
+                    manager_id=bq_emp.get("manager_id"),
+                    location=bq_emp.get("location", "HQ"),
+                    joining_date=str(bq_emp.get("joining_date", "2026-09-01")),
+                    onboarding_status=bq_emp.get("onboarding_status", "IN_PROGRESS"),
+                    is_day_one=bool(bq_emp.get("is_day_one", False)),
+                    assigned_buddy_name=bq_emp.get("assigned_buddy_name"),
+                    assigned_buddy_email=bq_emp.get("assigned_buddy_email"),
+                    onboarding_track=bq_emp.get("onboarding_track", "Backend"),
+                )
+        except Exception as bq_err:
+            print(f"[AuthService] BigQuery lookup notice: {bq_err}", file=sys.stderr)
+
+        # 2. Direct Cloud Firestore employee lookup
+        try:
+            fs_emp = firestore_db.get_employee(clean_token)
+            if fs_emp:
+                return EmployeeRecord(
+                    employee_id=fs_emp.get("employee_id", clean_token),
+                    google_subject=fs_emp.get("google_subject", ""),
+                    email=fs_emp.get("email", ""),
+                    name=fs_emp.get("name", ""),
+                    department=fs_emp.get("department", "Engineering"),
+                    team=fs_emp.get("team", "Payments"),
+                    job_role=fs_emp.get("job_role", "Software Engineer"),
+                    authorization_role=AuthorizationRole(fs_emp.get("authorization_role", "employee")),
+                    manager_id=fs_emp.get("manager_id"),
+                    location=fs_emp.get("location", "HQ"),
+                    joining_date=str(fs_emp.get("joining_date", "2026-09-01")),
+                    onboarding_status=fs_emp.get("onboarding_status", "IN_PROGRESS"),
+                    is_day_one=bool(fs_emp.get("is_day_one", False)),
+                    assigned_buddy_name=fs_emp.get("assigned_buddy_name"),
+                    assigned_buddy_email=fs_emp.get("assigned_buddy_email"),
+                    onboarding_track=fs_emp.get("onboarding_track", "Backend"),
+                )
+        except Exception as fs_err:
+            print(f"[AuthService] Firestore lookup notice: {fs_err}", file=sys.stderr)
+
+        # 3. Direct mock token lookup
         if clean_token in MOCK_TOKEN_MAP:
             emp_id = MOCK_TOKEN_MAP[clean_token]
             return _EMPLOYEES.get(emp_id)
 
-        # 2. Google Subject mapping or direct employee_id match
+        # 4. Google Subject mapping or direct employee_id match
         for emp in _EMPLOYEES.values():
             if emp.google_subject == clean_token or emp.employee_id == clean_token:
                 return emp
@@ -340,8 +392,17 @@ class OnboardingService:
                 tasks.append(task_copy)
             _CHECKLISTS[employee_id] = tasks
 
-        # Reconcile with persisted state store
-        completed_ids = state_store.get_completed_task_ids(employee_id)
+        # Reconcile with persisted state store and BigQuery
+        completed_ids = list(state_store.get_completed_task_ids(employee_id))
+        try:
+            bq_tasks = BigQueryService.get_employee_tasks(employee_id)
+            for bqt in bq_tasks:
+                if bqt.get("status") == "COMPLETED" and bqt.get("task_id"):
+                    if bqt["task_id"] not in completed_ids:
+                        completed_ids.append(bqt["task_id"])
+        except Exception as bq_err:
+            pass
+
         for t in tasks:
             if t.task_id in completed_ids:
                 t.status = TaskStatus.COMPLETED
@@ -361,7 +422,15 @@ class OnboardingService:
 
     @staticmethod
     def complete_task(employee_id: str, task_id: str) -> bool:
+        # 1. Update Cloud Firestore
         state_store.mark_task_completed(employee_id, task_id)
+
+        # 2. Update BigQuery task status
+        try:
+            BigQueryService.update_task_status(employee_id, task_id, "COMPLETED")
+        except Exception as bq_err:
+            print(f"[OnboardingService] BigQuery task update notice: {bq_err}", file=sys.stderr)
+
         tasks = _CHECKLISTS.get(employee_id)
         if tasks:
             for t in tasks:
@@ -369,7 +438,16 @@ class OnboardingService:
                     t.status = TaskStatus.COMPLETED
                     t.completed_at = datetime.utcnow().isoformat() + "Z"
                     t.is_overdue = False
-                    return True
+
+        # 3. If all tasks are completed, update employee status in BigQuery
+        try:
+            completed_ids = state_store.get_completed_task_ids(employee_id)
+            total = len(tasks) if tasks else 6
+            if len(completed_ids) >= total:
+                BigQueryService.update_employee_status(employee_id, "COMPLETED")
+        except Exception as bq_status_err:
+            print(f"[OnboardingService] BigQuery employee status update notice: {bq_status_err}", file=sys.stderr)
+
         return True
 
     @staticmethod
@@ -730,9 +808,18 @@ class KnowledgeService:
                 if asset.team != "ALL" and asset.team.lower() != actor.team.lower():
                     return {"error": f"Unauthorized: Restricted to {asset.team} team."}
 
-                full_text = "\n\n".join(c.content for c in asset.chunks)
                 d = asset.to_dict()
-                d["full_content"] = full_text
+                # Direct Google Cloud Storage document retrieval
+                gcs_res = GCSService.read_document_from_gcs(asset.gcs_uri)
+                if gcs_res.get("content"):
+                    d["full_content"] = gcs_res["content"]
+                    d["source"] = "Google Cloud Storage (GCS)"
+                    d["gcs_status"] = "LOADED_FROM_GCS"
+                else:
+                    full_text = "\n\n".join(c.content for c in asset.chunks)
+                    d["full_content"] = full_text
+                    d["source"] = "Knowledge Catalog (GCS sync pending)"
+                    d["gcs_status"] = gcs_res.get("status", "GCS_OFFLINE")
                 return d
 
         for insight in KNOWLEDGE_INSIGHTS:
@@ -745,16 +832,23 @@ class KnowledgeService:
                     return {"error": "Unauthorized: Manager clearance required to access this document."}
                 if insight["team"] != "ALL" and insight["team"].lower() != actor.team.lower():
                     return {"error": f"Unauthorized: Restricted to {insight['team']} team."}
+                
+                gcs_uri = insight.get("gcs_uri", "")
+                gcs_res = GCSService.read_document_from_gcs(gcs_uri) if gcs_uri else {}
+                content = gcs_res.get("content") or insight.get("full_content", insight["summary"])
+
                 return {
                     "document_id": insight.get("doc_id", doc_id),
                     "title": insight["title"],
                     "category": insight["category"],
                     "team": insight["team"],
                     "access_level": insight["access_level"],
-                    "gcs_uri": insight.get("gcs_uri", ""),
+                    "gcs_uri": gcs_uri,
                     "description": insight["summary"],
-                    "full_content": insight.get("full_content", insight["summary"]),
+                    "full_content": content,
                     "effective_date": insight.get("effective_date", ""),
+                    "source": "Google Cloud Storage (GCS)" if gcs_res.get("content") else "Knowledge Catalog",
+                    "gcs_status": gcs_res.get("status", "GCS_NOT_CONFIGURED")
                 }
         return None
 

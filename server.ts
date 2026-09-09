@@ -19,11 +19,14 @@ try {
     setIfMissing("ENVIRONMENT", appConfig.environment);
     setIfMissing("ALLOWED_CORPORATE_DOMAIN", appConfig.allowedCorporateDomain);
     setIfMissing("GCP_PROJECT_ID", appConfig.gcpProjectId);
-    setIfMissing("FIREBASE_PROJECT_ID", appConfig.gcpProjectId);
+    setIfMissing("FIREBASE_PROJECT_ID", appConfig.firebaseProjectId || appConfig.gcpProjectId);
     setIfMissing("FIRESTORE_DATABASE_ID", appConfig.firestoreDatabaseId);
+    setIfMissing("BIGQUERY_DATASET", appConfig.bigqueryDataset || "employee_ai");
+    setIfMissing("GCS_BUCKET", appConfig.gcsBucket || "patchamomma-505416-employee-ai-knowledge");
     setIfMissing("GOOGLE_OAUTH_CLIENT_ID", appConfig.googleOAuthClientId);
     setIfMissing("JIRA_HOST", appConfig.jira?.host);
     setIfMissing("JIRA_PROJECT_KEY", appConfig.jira?.projectKey);
+    setIfMissing("JIRA_EMAIL", appConfig.jira?.email);
     setIfMissing("SALESFORCE_INSTANCE_URL", appConfig.salesforce?.instanceUrl);
   }
 } catch (e) {
@@ -260,7 +263,7 @@ app.post("/api/v1/chat", requireAuth, async (req: AuthenticatedRequest, res) => 
 
     if (process.env.GEMINI_API_KEY) {
       try {
-        const ai = new GoogleGenAI();
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const systemPrompt = `You are the Company AI Assistant, an internal workplace assistant helping employees with onboarding, company runbooks, engineering standards, and daily operations.
 
 Employee Profile:
@@ -294,10 +297,16 @@ Critical Directives:
    - People Operations (HR): Amanda Walker (amanda.w@company.com, #people-ops)
    Invite them to use the "Point of Contact" quick action in their dashboard.`;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.6-flash",
+        // Protect with 5-second timeout so it falls back to multi-agent immediately if API is unreachable
+        const genPromise = ai.models.generateContent({
+          model: "gemini-3.8-flash",
           contents: `${systemPrompt}\n\nEmployee Query: "${message}"`,
         });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Gemini API call timed out")), 5000)
+        );
+
+        const response = await Promise.race([genPromise, timeoutPromise]);
 
         const replyText = response.text || "";
         if (replyText.trim()) {
@@ -322,7 +331,7 @@ Critical Directives:
               session_id: effectiveSessionId,
               user_message: message,
               assistant_message: replyText,
-              agent: "Company AI Assistant (Gemini 3.6)",
+              agent: "Company AI Assistant (Gemini 3.8)",
             });
           } catch (recErr: any) {
             console.warn("Firestore session persist note:", recErr.message);
@@ -331,7 +340,7 @@ Critical Directives:
           res.json({
             response: replyText,
             session_id: effectiveSessionId,
-            agent_invoked: "Company AI Assistant (Gemini 3.6)",
+            agent_invoked: "Company AI Assistant (Gemini 3.8)",
             suggested_actions: suggested,
             timestamp: new Date().toISOString(),
           });

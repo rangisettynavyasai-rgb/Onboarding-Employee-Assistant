@@ -988,6 +988,7 @@
               <span id="user-display-role" class="role-tag role-employee"></span>
             </div>
           </div>
+          <button class="btn-secondary" onclick="openCloudSyncModal()" style="display: inline-flex; align-items: center; gap: 6px;" title="View Cloud Infrastructure Status (Firestore, BigQuery, GCS)"><span style="color: var(--accent-cyan);">☁</span> Cloud DBs</button>
           <button class="btn-secondary" onclick="signOut()">Sign Out</button>
         </div>
       </header>
@@ -1148,10 +1149,11 @@
     <div class="modal-card modal-card-lg">
       <div class="modal-header-row">
         <div>
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
             <span id="doc-modal-type-badge" class="mesh-category-pill cat-STANDARDS">STANDARDS</span>
             <span id="doc-modal-id-badge" class="doc-meta-badge">DOC-ID</span>
             <span id="doc-modal-clearance-badge" class="role-tag role-employee">Employee</span>
+            <span id="doc-modal-source-badge" class="mesh-category-pill" style="background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3);">☁ Google Cloud Storage</span>
           </div>
           <h2 id="doc-modal-title" style="font-size: 18px; margin: 0; color: var(--text-primary);">Document Title</h2>
           <div id="doc-modal-uri" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: monospace;">gs://...</div>
@@ -1269,6 +1271,34 @@
 
       <div style="display: flex; justify-content: flex-end; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 8px;">
         <button class="btn-secondary" onclick="closeContactsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloud Infrastructure & Databases Status Modal -->
+  <div id="cloud-sync-modal" class="modal-backdrop">
+    <div class="modal-card modal-card-lg">
+      <div class="modal-header-row">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="mesh-category-pill" style="background: rgba(14,165,233,0.15); color: #38bdf8; border: 1px solid rgba(14,165,233,0.3);">GOOGLE CLOUD PLATFORM</span>
+            <span class="doc-meta-badge">No Local Storage • Cloud-Native</span>
+          </div>
+          <h3 style="font-size: 18px; margin: 0;">Enterprise Cloud Storage & Database Architecture</h3>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+            Live connection and IAM status for Firestore, BigQuery, and Google Cloud Storage (Cloud Run).
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="closeCloudSyncModal()" aria-label="Close">✕</button>
+      </div>
+
+      <div id="cloud-sync-content" class="modal-content-scroll" style="display: flex; flex-direction: column; gap: 16px;">
+        <div style="font-size: 13px; color: var(--text-muted); padding: 24px 0; text-align: center;">Checking GCP Service Account connections...</div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 8px;">
+        <button class="btn-secondary" onclick="refreshCloudSyncStatus()">⟳ Re-test Connections</button>
+        <button class="btn-secondary" onclick="closeCloudSyncModal()">Close</button>
       </div>
     </div>
   </div>

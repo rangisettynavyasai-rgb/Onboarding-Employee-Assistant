@@ -2,13 +2,51 @@
   "environment": "development",
   "allowedCorporateDomain": "*",
   "gcpProjectId": "patchamomma-505416",
+  "firebaseProjectId": "patchamomma-505416",
   "firestoreDatabaseId": "onboarding-employee-assistant-firestore-database",
+  "bigqueryDataset": "employee_ai",
+  "gcsBucket": "patchamomma-505416-employee-ai-knowledge",
   "googleOAuthClientId": "874836211421-q56rjcminj3kr9fviretuu8ndfp9krtm.apps.googleusercontent.com",
   "jira": {
     "host": "https://jira.company.internal",
-    "projectKey": "OPS"
+    "projectKey": "OPS",
+    "email": "onboarding-bot@company.internal"
   },
   "salesforce": {
     "instanceUrl": "https://salesforce.company.internal"
+  },
+  "secrets": {
+    "geminiApiKey": {
+      "secretId": "gemini-api-key",
+      "envVar": "GEMINI_API_KEY",
+      "description": "Google Gemini API key for conversational AI assistance"
+    },
+    "firebaseApiKey": {
+      "secretId": "firebase-api-key",
+      "envVar": "FIREBASE_API_KEY",
+      "description": "Firebase Web API key for Cloud Firestore database sync"
+    },
+    "jiraEmail": {
+      "secretId": "jira-email",
+      "envVar": "JIRA_EMAIL",
+      "description": "Atlassian account email for Jira Cloud integration"
+    },
+    "jiraApiToken": {
+      "secretId": "jira-api-token",
+      "envVar": "JIRA_API_TOKEN",
+      "description": "Atlassian API token for Jira incident ticket creation"
+    },
+    "salesforceAccessToken": {
+      "secretId": "salesforce-token",
+      "envVar": "SALESFORCE_ACCESS_TOKEN",
+      "description": "Salesforce OAuth access token for timesheet synchronization"
+    }
+  },
+  "secretIds": {
+    "GEMINI_API_KEY": "gemini-api-key",
+    "FIREBASE_API_KEY": "firebase-api-key",
+    "JIRA_EMAIL": "jira-email",
+    "JIRA_API_TOKEN": "jira-api-token",
+    "SALESFORCE_ACCESS_TOKEN": "salesforce-token"
   }
 }

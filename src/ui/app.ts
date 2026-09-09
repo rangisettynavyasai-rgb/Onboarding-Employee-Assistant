@@ -432,13 +432,13 @@ export function renderChecklistTasks(): void {
       <div style="flex-shrink: 0; margin-left: 8px;">
         ${
           !isDone
-            ? `<button class="task-btn-done" data-task-id="${t.task_id}" onclick="completeTask('${t.task_id}')">Done</button>`
+            ? `<button class="task-btn-done" data-task-id="${t.task_id}" type="button">Done</button>`
             : `<span style="color: var(--accent-emerald); font-weight: 700; font-size: 14px;">✓</span>`
         }
       </div>
     `;
 
-    // Direct listener for foolproof click handling in iframe environments
+    // Direct listener for click handling
     const doneBtn = div.querySelector<HTMLButtonElement>(".task-btn-done");
     if (doneBtn) {
       doneBtn.addEventListener("click", async (ev) => {
@@ -473,7 +473,21 @@ export async function refreshChecklist(): Promise<void> {
   }
 }
 
+const inFlightTaskCompletions = new Set<string>();
+
 export async function completeTask(taskId: string): Promise<void> {
+  if (!taskId || inFlightTaskCompletions.has(taskId)) {
+    return;
+  }
+
+  // Prevent completing a task that is already marked completed
+  const currentTask = state.currentChecklistData?.tasks?.find((t) => t.task_id === taskId);
+  if (currentTask && currentTask.status === "COMPLETED") {
+    return;
+  }
+
+  inFlightTaskCompletions.add(taskId);
+
   // 1. Optimistic UI update to immediately show task completed and progress advanced
   if (state.currentChecklistData && Array.isArray(state.currentChecklistData.tasks)) {
     const task = state.currentChecklistData.tasks.find((t) => t.task_id === taskId);
@@ -520,6 +534,8 @@ export async function completeTask(taskId: string): Promise<void> {
       `⚠️ Could not complete task **${taskId}**: ${err.message}`,
       "Onboarding Specialist"
     );
+  } finally {
+    inFlightTaskCompletions.delete(taskId);
   }
 }
 
@@ -598,6 +614,23 @@ export async function openDocumentModal(docId: string): Promise<void> {
     if (clearanceBadge) {
       clearanceBadge.textContent = (doc.access_level || "employee").toUpperCase();
       clearanceBadge.className = `role-tag role-${(doc.access_level || "employee").toLowerCase()}`;
+    }
+
+    const sourceBadge = document.getElementById("doc-modal-source-badge");
+    if (sourceBadge) {
+      if (doc.gcs_status === "LOADED_FROM_GCS" || doc.source?.includes("Google Cloud Storage")) {
+        sourceBadge.textContent = "☁ Live GCS Document";
+        sourceBadge.style.display = "inline-block";
+        sourceBadge.style.background = "rgba(16,185,129,0.15)";
+        sourceBadge.style.color = "#34d399";
+        sourceBadge.style.border = "1px solid rgba(16,185,129,0.3)";
+      } else {
+        sourceBadge.textContent = "☁ GCS Knowledge Mesh";
+        sourceBadge.style.display = "inline-block";
+        sourceBadge.style.background = "rgba(59,130,246,0.15)";
+        sourceBadge.style.color = "#60a5fa";
+        sourceBadge.style.border = "1px solid rgba(59,130,246,0.3)";
+      }
     }
 
     if (contentEl) {
@@ -1120,6 +1153,126 @@ export function closeContactsModal(): void {
   if (modal) modal.style.display = "none";
 }
 
+export async function openCloudSyncModal(): Promise<void> {
+  const modal = document.getElementById("cloud-sync-modal");
+  if (!modal) return;
+  modal.style.display = "grid";
+  await refreshCloudSyncStatus();
+}
+
+export function closeCloudSyncModal(): void {
+  const modal = document.getElementById("cloud-sync-modal");
+  if (modal) modal.style.display = "none";
+}
+
+export async function refreshCloudSyncStatus(): Promise<void> {
+  const container = document.getElementById("cloud-sync-content");
+  if (!container) return;
+  container.innerHTML = `<div style="font-size: 13px; color: var(--text-muted); padding: 24px 0; text-align: center;">Querying live GCP connections (Firestore, BigQuery, GCS)...</div>`;
+
+  try {
+    const res = await apiRequest<any>("/api/v1/integrations/status");
+    const bq = res.bigquery || {};
+    const gcs = res.gcs || {};
+    const fs = res.firestore || {};
+
+    const bqConnected = Boolean(bq.connected);
+    const gcsConnected = Boolean(gcs.connected);
+    const fsConnected = Boolean(fs.connected);
+
+    container.innerHTML = `
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">📊</span>
+            <div>
+              <strong style="font-size: 14px; color: var(--text-primary);">Google BigQuery (System of Record)</strong>
+              <div style="font-size: 11px; color: var(--text-muted);">Dataset: <code>${bq.dataset || "employee_ai"}</code> • Project: <code>${bq.project_id || "patchamomma-505416"}</code></div>
+            </div>
+          </div>
+          <span class="role-tag" style="background: ${bqConnected ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)"}; color: ${bqConnected ? "#34d399" : "#fbbf24"}; border: 1px solid ${bqConnected ? "rgba(16,185,129,0.3)" : "rgba(245,158,11,0.3)"};">
+            ${bqConnected ? "✓ CONNECTED" : "403 IAM PENDING"}
+          </span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 6px 0; line-height: 1.4;">
+          ${bq.status || "Status check in progress"}
+        </p>
+        <div style="font-size: 11px; color: var(--text-muted);">
+          Employee directory &amp; task milestones are queried and synced with BigQuery.
+        </div>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">📁</span>
+            <div>
+              <strong style="font-size: 14px; color: var(--text-primary);">Google Cloud Storage (GCS Documents)</strong>
+              <div style="font-size: 11px; color: var(--text-muted);">Bucket: <code>${gcs.bucket || "patchamomma-505416-employee-ai-knowledge"}</code></div>
+            </div>
+          </div>
+          <span class="role-tag" style="background: ${gcsConnected ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)"}; color: ${gcsConnected ? "#34d399" : "#fbbf24"}; border: 1px solid ${gcsConnected ? "rgba(16,185,129,0.3)" : "rgba(245,158,11,0.3)"};">
+            ${gcsConnected ? "✓ CONNECTED" : "403 IAM PENDING"}
+          </span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 6px 0; line-height: 1.4;">
+          ${gcs.status || "Status check in progress"}
+        </p>
+        <div style="font-size: 11px; color: var(--text-muted);">
+          All Knowledge Mesh documents are streamed directly from GCS objects.
+        </div>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">🔥</span>
+            <div>
+              <strong style="font-size: 14px; color: var(--text-primary);">Google Cloud Firestore (Operational Data)</strong>
+              <div style="font-size: 11px; color: var(--text-muted);">Database: <code>${fs.database_id || "onboarding-employee-assistant-firestore-database"}</code></div>
+            </div>
+          </div>
+          <span class="role-tag" style="background: ${fsConnected ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)"}; color: ${fsConnected ? "#34d399" : "#fbbf24"}; border: 1px solid ${fsConnected ? "rgba(16,185,129,0.3)" : "rgba(245,158,11,0.3)"};">
+            ${fsConnected ? "✓ CONNECTED" : "REST READY"}
+          </span>
+        </div>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 0 0 6px 0; line-height: 1.4;">
+          ${fs.status || "Connected via direct Google Cloud REST"}
+        </p>
+        <div style="font-size: 11px; color: var(--text-muted);">
+          Collections: <code>checklists</code>, <code>sessions</code>, <code>timesheets</code>, <code>incidents</code>.
+        </div>
+      </div>
+
+      <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.25); border-radius: var(--radius-sm); padding: 14px 18px;">
+        <strong style="font-size: 13px; color: var(--accent-cyan); display: flex; align-items: center; gap: 6px;">
+          <span>☁</span> Cloud Run IAM Configuration Commands
+        </strong>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 6px 0 10px 0; line-height: 1.4;">
+          To grant your Cloud Run Service Account direct access to BigQuery and GCS in project <code>patchamomma-505416</code>, run these commands in Google Cloud Shell:
+        </p>
+        <pre style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 6px; font-size: 11px; color: #a5f3fc; overflow-x: auto; line-height: 1.5; margin: 0; font-family: monospace;"># 1. Enable BigQuery &amp; Cloud Storage APIs
+gcloud services enable bigquery.googleapis.com storage.googleapis.com --project patchamomma-505416
+
+# 2. Grant BigQuery Data Editor &amp; Job User to Cloud Run SA
+gcloud projects add-iam-policy-binding patchamomma-505416 \\
+  --member="serviceAccount:YOUR_CLOUD_RUN_SA@patchamomma-505416.iam.gserviceaccount.com" \\
+  --role="roles/bigquery.dataEditor"
+gcloud projects add-iam-policy-binding patchamomma-505416 \\
+  --member="serviceAccount:YOUR_CLOUD_RUN_SA@patchamomma-505416.iam.gserviceaccount.com" \\
+  --role="roles/bigquery.jobUser"
+
+# 3. Grant GCS Object Viewer for knowledge documents
+gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-ai-knowledge \\
+  --member="serviceAccount:YOUR_CLOUD_RUN_SA@patchamomma-505416.iam.gserviceaccount.com" \\
+  --role="roles/storage.objectViewer"</pre>
+      </div>
+    `;
+  } catch (err: any) {
+    container.innerHTML = `<div style="color: var(--accent-rose); padding: 16px;">Failed to query integration status: ${err.message}</div>`;
+  }
+}
+
 export function askInChatAboutPerson(name: string, role: string): void {
   closeContactsModal();
   const prompt = `What are the best questions to ask my ${role}, ${name}, during our initial sync?`;
@@ -1423,6 +1576,9 @@ export function signOut(): void {
   handleRunbookSearch,
   openContactsModal,
   closeContactsModal,
+  openCloudSyncModal,
+  closeCloudSyncModal,
+  refreshCloudSyncStatus,
   askInChatAboutPerson,
   openIncidentModal,
   closeIncidentModal,
