@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci || npm install; else npm install; fi
 
 COPY . .
 RUN npm run build
