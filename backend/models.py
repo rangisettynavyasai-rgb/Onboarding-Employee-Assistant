@@ -193,6 +193,8 @@ class IncidentRecord:
     status: str
     assigned_team: str
     created_at: str
+    jira_key: Optional[str] = None
+    jira_url: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -204,6 +206,8 @@ class IncidentRecord:
             "status": self.status,
             "assigned_team": self.assigned_team,
             "created_at": self.created_at,
+            "jira_key": self.jira_key,
+            "jira_url": self.jira_url,
         }
 
 @dataclass

@@ -12,7 +12,8 @@ from typing import Optional, List, Dict, Any
 
 from backend.models import (
     EmployeeRecord, AuthorizationRole, TaskStatus, OnboardingTask,
-    TimesheetStatus, IncidentSeverity, IncidentRecord, KnowledgeChunk, KnowledgeAsset
+    TimesheetStatus, IncidentSeverity, IncidentRecord, KnowledgeChunk, KnowledgeAsset,
+    UserSession
 )
 from backend.data import (
     EMPLOYEES, ONBOARDING_TASKS, TIMESHEETS, INCIDENTS, TEAM_DIRECTORY, KNOWLEDGE_CATALOG
@@ -62,7 +63,7 @@ class AuthService:
     @staticmethod
     def authenticate_credentials(identity: str, password: Optional[str] = None) -> Optional[EmployeeRecord]:
         emp = AuthService.resolve_employee(identity)
-        if not emp or (password is not None and len(str(password).strip()) == 0):
+        if not emp:
             return None
         return emp
 
@@ -112,7 +113,7 @@ class AuthService:
         for emp in _EMPLOYEES.values():
             if emp.google_subject == clean_token or emp.employee_id == clean_token or emp.email.lower() == clean_token.lower():
                 return emp
-        return _EMPLOYEES.get("EMP-2026-001")
+        return None
 
     @staticmethod
     def register_google_profile(email: str, name: str, sub: str = "") -> EmployeeRecord:
@@ -430,7 +431,27 @@ class KnowledgeService:
 
     @staticmethod
     def get_authorized_insights(actor: EmployeeRecord) -> List[Dict[str, Any]]:
-        return []
+        is_mgr = is_manager_or_hr(actor.authorization_role)
+        results = []
+        for asset in KNOWLEDGE_CATALOG:
+            if asset.access_level == "manager" and not is_mgr:
+                continue
+            if asset.team != "ALL" and asset.team.lower() != actor.team.lower():
+                continue
+            first_chunk = asset.chunks[0].content if asset.chunks else ""
+            summary_text = asset.description or (first_chunk[:140] + "..." if len(first_chunk) > 140 else first_chunk)
+            results.append({
+                "insight_id": f"INS-{asset.document_id}",
+                "title": asset.title,
+                "category": asset.document_type or "Runbook",
+                "summary": summary_text,
+                "team": asset.team,
+                "access_level": asset.access_level,
+                "effective_date": "2026-09-01",
+                "highlight_tag": "SECURITY" if "iam" in asset.title.lower() or "proxy" in asset.title.lower() else ("CRITICAL" if "triage" in asset.title.lower() else "POLICY"),
+                "action_suggestion": f"View {asset.title}"
+            })
+        return results[:6]
 
     @staticmethod
     def get_document(actor: EmployeeRecord, doc_id: str) -> Optional[Dict[str, Any]]:
@@ -490,7 +511,11 @@ class SessionService:
     @staticmethod
     def get_or_create_session(employee_id: str, session_id: Optional[str] = None) -> UserSession:
         from backend.models import UserSession
-        effective_id = session_id or f"sess-{employee_id.lower()}"
+        canonical_id = f"sess-{employee_id.lower()}"
+        if session_id and session_id.lower().startswith(canonical_id):
+            effective_id = session_id.lower()
+        else:
+            effective_id = canonical_id
         
         try:
             fs_record = firestore_db.get_session(effective_id)
@@ -499,17 +524,6 @@ class SessionService:
                     session_id=effective_id, employee_id=employee_id,
                     created_at=fs_record.get("created_at", datetime.utcnow().isoformat() + "Z"),
                     last_accessed_at=datetime.utcnow().isoformat() + "Z", history=fs_record.get("history", [])
-                )
-        except Exception:
-            pass
-
-        try:
-            from backend.db import db
-            row = db.query_one("SELECT * FROM chat_sessions WHERE session_id = ?", (effective_id,))
-            if row:
-                return UserSession(
-                    session_id=effective_id, employee_id=employee_id, created_at=row["created_at"],
-                    last_accessed_at=datetime.utcnow().isoformat() + "Z", history=json.loads(row["history_json"])
                 )
         except Exception:
             pass
@@ -524,14 +538,6 @@ class SessionService:
         session.last_accessed_at = datetime.utcnow().isoformat() + "Z"
         try:
             firestore_db.save_session(session.session_id, session.employee_id, session.history)
-        except Exception:
-            pass
-        try:
-            from backend.db import db
-            db.execute(
-                "INSERT OR REPLACE INTO chat_sessions (session_id, employee_id, history_json, created_at, last_accessed_at) VALUES (?, ?, ?, ?, ?)",
-                (session.session_id, session.employee_id, json.dumps(session.history), session.created_at, session.last_accessed_at)
-            )
         except Exception:
             pass
 

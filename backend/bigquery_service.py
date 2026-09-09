@@ -27,10 +27,8 @@ from google.cloud.exceptions import GoogleCloudError
 class BigQueryService:
     """
     Official SDK client connection manager for Google BigQuery executing queries and DML mutations.
-    Provides complete SQL persistence across all enterprise entities with active SQLite fallbacks.
+    Provides complete SQL persistence across all enterprise entities natively against Cloud BigQuery.
     """
-
-    _is_available: Optional[bool] = None
 
     @classmethod
     def get_project_id(cls) -> str:
@@ -41,48 +39,11 @@ class BigQueryService:
         return get_config_val("BIGQUERY_DATASET", "employee_ai")
 
     @classmethod
-    def _execute_local_sql(cls, sql: str) -> Dict[str, Any]:
-        """Executes SQL query or DML against enterprise database initialized from bigquery/ folder."""
-        try:
-            from backend.db import db
-            clean_sql = re.sub(r"`[^`]*\.employee_ai\.([^`]+)`", r"\1", sql)
-            clean_sql = re.sub(r"`([^`]+)`", r"\1", clean_sql)
-            clean_sql = re.sub(r"\bCURRENT_TIMESTAMP\(\)", "CURRENT_TIMESTAMP", clean_sql, flags=re.IGNORECASE)
-
-            trimmed = clean_sql.strip()
-            if trimmed.upper().startswith("SELECT"):
-                rows = db.query(clean_sql)
-                return {
-                    "success": True,
-                    "rows": rows,
-                    "total_rows": len(rows),
-                    "job_complete": True,
-                    "num_dml_affected_rows": 0,
-                    "engine": "enterprise_db"
-                }
-            else:
-                affected = db.execute(clean_sql)
-                return {
-                    "success": True,
-                    "rows": [],
-                    "total_rows": 0,
-                    "job_complete": True,
-                    "num_dml_affected_rows": affected,
-                    "engine": "enterprise_db"
-                }
-        except Exception as err:
-            print(f"[BigQueryService] DB execution error: {err}", file=sys.stderr)
-            return {"success": False, "error": str(err), "rows": []}
-
-    @classmethod
     def execute_query(cls, sql: str) -> Dict[str, Any]:
         """
-        Executes a SQL statement via the official BigQuery Client SDK
-        or falls back directly to the local database engine if unauthenticated.
+        Executes a SQL statement via the official BigQuery Client SDK directly.
+        All production data is queried from and mutated in Cloud BigQuery.
         """
-        if cls._is_available is False:
-            return cls._execute_local_sql(sql)
-
         project_id = cls.get_project_id()
 
         try:
@@ -91,8 +52,6 @@ class BigQueryService:
             query_job = client.query(sql)
             results = query_job.result()  # Waits for query to complete
 
-            cls._is_available = True
-            
             # Parse rows into lists of plain dict objects
             parsed_rows = [dict(row) for row in results]
             
@@ -104,12 +63,16 @@ class BigQueryService:
                 "num_dml_affected_rows": query_job.num_dml_affected_rows,
                 "engine": "cloud_bigquery"
             }
-        except (GoogleCloudError, Exception) as e:
-            # Drop cleanly into local operational database fallback patterns if credentials break
-            print(f"[BigQueryService] Redirecting query stream to local engine. Notice: {str(e)}", file=sys.stderr)
-            if "401" in str(e) or "403" in str(e) or "credentials" in str(e).lower():
-                cls._is_available = False
-            return cls._execute_local_sql(sql)
+        except Exception as e:
+            print(f"[BigQueryService] BigQuery query execution error: {str(e)}", file=sys.stderr)
+            return {
+                "success": False,
+                "error": str(e),
+                "rows": [],
+                "total_rows": 0,
+                "job_complete": False,
+                "engine": "cloud_bigquery"
+            }
 
     @classmethod
     def get_employee(cls, employee_id: str) -> Optional[Dict[str, Any]]:

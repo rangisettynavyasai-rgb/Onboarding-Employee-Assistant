@@ -1,8 +1,0 @@
-{
-  "name": "Onboarding Employee Assistant",
-  "description": "Unified internal workspace for employee onboarding, team knowledge, runbooks, and daily operations.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

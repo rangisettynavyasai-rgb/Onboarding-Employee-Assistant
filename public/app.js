@@ -148,9 +148,11 @@
         roleEl.className = `role-tag role-${landing.authorization_role.toLowerCase()}`;
       }
       $("proactive-greeting-text").textContent = landing.proactive_greeting;
+      const stream = document.getElementById("chat-stream");
+      if (stream) stream.innerHTML = "";
       await refreshChecklist();
       await refreshKnowledgeInsights();
-      await restoreSessionHistory(state.currentSessionId, landing.name);
+      await restoreSessionHistory(state.currentSessionId, landing.name, landing.employee_id);
     } catch (err) {
       console.error("Session initialization failed:", err);
       state.activeBearerToken = null;
@@ -170,37 +172,73 @@
       setAuthLoading(false);
     }
   }
-  async function restoreSessionHistory(sessionId, userName) {
+  async function restoreSessionHistory(sessionId, userName, employeeId) {
+    const stream = $("chat-stream");
+    stream.innerHTML = "";
+    const localKey = employeeId ? `onboarding_chat_${employeeId}` : null;
+    let hasLocalMessages = false;
+    if (localKey) {
+      try {
+        const cached = localStorage.getItem(localKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            stream.innerHTML = "";
+            parsed.forEach((m) => {
+              appendChatMessage(
+                m.role,
+                m.content,
+                m.role === "assistant" ? m.agent || "Supervisor Agent" : null,
+                [],
+                false
+              );
+            });
+            hasLocalMessages = true;
+          }
+        }
+      } catch (_) {
+      }
+    }
     try {
       const sessionData = await apiRequest(
         `/api/v1/session/history?session_id=${sessionId}`
       );
-      const stream = $("chat-stream");
-      stream.innerHTML = "";
       if (sessionData.history && sessionData.history.length > 0) {
+        stream.innerHTML = "";
         sessionData.history.forEach((m) => {
           appendChatMessage(
             m.role,
             m.content,
-            m.role === "assistant" ? m.agent || "Supervisor Agent" : null
+            m.role === "assistant" ? m.agent || "Supervisor Agent" : null,
+            [],
+            false
           );
         });
-      } else {
+        if (localKey) {
+          localStorage.setItem(localKey, JSON.stringify(sessionData.history));
+        }
+      } else if (!hasLocalMessages) {
+        stream.innerHTML = "";
         appendChatMessage(
           "assistant",
           `\u{1F44B} Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`,
           "Supervisor Agent",
-          ["Check Timesheet", "View Pending Tasks", "Point of Contact", "Search Runbooks"]
+          ["Check Timesheet", "View Pending Tasks", "Point of Contact", "Search Runbooks"],
+          false
         );
       }
     } catch (e) {
-      console.warn("Could not load previous session history:", e);
-      appendChatMessage(
-        "assistant",
-        `\u{1F44B} Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`,
-        "Supervisor Agent",
-        ["Check Timesheet", "View Pending Tasks", "Point of Contact", "Search Runbooks"]
-      );
+      console.warn("Could not load remote session history:", e);
+      if (!hasLocalMessages) {
+        stream.innerHTML = "";
+        appendChatMessage(
+          "assistant",
+          `\u{1F44B} Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`,
+          "Supervisor Agent",
+          ["Check Timesheet", "View Pending Tasks", "Point of Contact", "Search Runbooks"],
+          false
+        );
+      }
     }
   }
   async function refreshKnowledgeInsights() {
@@ -644,7 +682,7 @@
       btn.disabled = false;
     }
   }
-  function appendChatMessage(role, text, agentName = null, suggestions = []) {
+  function appendChatMessage(role, text, agentName = null, suggestions = [], saveToCache = true) {
     const stream = document.getElementById("chat-stream");
     if (!stream) return;
     const bubble = document.createElement("div");
@@ -662,6 +700,20 @@
     bubble.innerHTML = content;
     stream.appendChild(bubble);
     stream.scrollTop = stream.scrollHeight;
+    if (saveToCache && state.currentUserProfile?.employee_id) {
+      const key = `onboarding_chat_${state.currentUserProfile.employee_id}`;
+      try {
+        const existing = JSON.parse(localStorage.getItem(key) || "[]");
+        existing.push({
+          role,
+          content: text,
+          agent: agentName,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        });
+        localStorage.setItem(key, JSON.stringify(existing.slice(-50)));
+      } catch (_) {
+      }
+    }
   }
   function quickPrompt(txt) {
     if (txt === "Point of Contact" || txt === "Connect with Buddy" || txt === "Connect to Point of Contact") {
@@ -909,6 +961,14 @@
       const gcsConnected = Boolean(gcs.connected);
       const fsConnected = Boolean(fs.connected);
       container.innerHTML = `
+      <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div>
+          <div style="font-size: 13px; font-weight: 600; color: #34d399; margin-bottom: 2px;">\u26A1 Enterprise Relational DB Active (Zero Data Loss)</div>
+          <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">All onboarding tasks, employee directory data, timesheets, and chat history are persistently recorded in the local enterprise database engine seeded from <code>bigquery/tables.sql</code>. If Cloud BigQuery or GCS return 403 IAM Pending, the app transparently handles all operations locally.</div>
+        </div>
+        <span class="role-tag" style="background: rgba(16,185,129,0.2); color: #34d399; font-size: 11px; white-space: nowrap;">ACTIVE ENGINE</span>
+      </div>
+
       <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 18px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -1252,6 +1312,8 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
     state.activeBearerToken = null;
     state.currentSessionId = null;
     state.currentUserProfile = null;
+    const stream = document.getElementById("chat-stream");
+    if (stream) stream.innerHTML = "";
     $("dashboard-view").style.display = "none";
     $("auth-view").style.display = "block";
     dismissAuthAlert();

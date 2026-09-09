@@ -1,27 +1,37 @@
 # main.py
 import os
 import re
-from fastapi import FastAPI, Depends, HTTPException, Header, Body
+import json
+import base64
+from fastapi import FastAPI, Depends, HTTPException, Header, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Any
 
-# Directly import your production Python domain modules!
-from backend.services import AuthService, OnboardingService, OperationsService, KnowledgeService, ProactiveService, SessionService
+# Directly import production Python domain modules
+from backend.services import (
+    AuthService, OnboardingService, OperationsService, KnowledgeService,
+    ProactiveService, SessionService
+)
 from backend.agents import SupervisorAgent
 from backend.bigquery_service import BigQueryService
 from backend.salesforce_service import SalesforceService
 from backend.calendar_service import CalendarService
 from backend.firestore import firestore_db
 from backend.gcs_service import GCSService
-from backend.config import get_secret_ids
+from backend.config import get_secret_ids, get_config_val, get_secret
 from backend.jira_service import JiraService
 
 app = FastAPI(title="Onboarding Employee Assistant Gateway", version="1.0.0")
 
-# Enforce secure CORS parameters matching corporate layout configurations
+@app.get("/health")
+@app.get("/api/v1/health")
+def health_check():
+    return {"status": "ok", "service": "onboarding-employee-assistant", "engine": "fastapi"}
+
+# Enforce secure CORS parameters
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,7 +40,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Pydantic Input Schemas matching your UI's ajax payload signatures
+# Pydantic Input Schemas matching UI ajax payload signatures
 class LoginPayload(BaseModel):
     identity: str
     password: Optional[str] = ""
@@ -69,7 +79,7 @@ def get_current_employee(authorization: Optional[str] = Header(None)):
     return employee
 
 # ----------------------------------------------------------------------------
-# 🔐 AUTHENTICATION ENDPOINTS
+# 🔐 AUTHENTICATION & HEALTH ENDPOINTS
 # ----------------------------------------------------------------------------
 @app.get("/health")
 def health():
@@ -77,7 +87,7 @@ def health():
 
 
 @app.post("/api/v1/auth/login")
-def login(payload: dict = Body(...)): # Change payload to a flexible dictionary
+def login(payload: dict = Body(...)):
     identity = payload.get("identity")
     password = payload.get("password", "")
     
@@ -94,15 +104,30 @@ def login(payload: dict = Body(...)): # Change payload to a flexible dictionary
         "employee": emp.to_dict()
     }
 
+
 @app.post("/api/v1/auth/google")
-def auth_google(payload: dict = Body(...)): # Change payload to a flexible dictionary
-    # Unpack properties dynamically to mirror exactly what Express was doing
+def auth_google(payload: dict = Body(...)):
     credential = payload.get("credential") or payload.get("identity") or ""
     email = payload.get("email") or ""
     name = payload.get("name") or ""
     sub = payload.get("sub") or ""
 
-    # If the frontend passes the token as a single value block, mirror it cleanly
+    # Decode Google JWT ID token if credential is a standard 3-part JWT
+    if credential and isinstance(credential, str) and credential.startswith("eyJ") and credential.count(".") == 2:
+        try:
+            parts = credential.split(".")
+            payload_b64 = parts[1]
+            payload_b64 += "=" * ((4 - len(payload_b64) % 4) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8"))
+            if claims.get("email"):
+                email = claims["email"]
+            if claims.get("name") and not name:
+                name = claims["name"]
+            if claims.get("sub") and not sub:
+                sub = claims["sub"]
+        except Exception:
+            pass
+
     resolved_identity = email if email else credential
     
     emp = AuthService.register_google_profile(
@@ -117,6 +142,7 @@ def auth_google(payload: dict = Body(...)): # Change payload to a flexible dicti
         "employee": emp.to_dict()
     }
 
+
 # ----------------------------------------------------------------------------
 # 📊 OPERATIONAL WORKFLOW ENDPOINTS
 # ----------------------------------------------------------------------------
@@ -124,11 +150,42 @@ def auth_google(payload: dict = Body(...)): # Change payload to a flexible dicti
 def landing(employee = Depends(get_current_employee)):
     return ProactiveService.generate_landing(employee)
 
+
 @app.post("/api/v1/chat")
 def chat(payload: ChatPayload, employee = Depends(get_current_employee)):
-    # Direct asynchronous execution loop into your Multi-Agent grid!
-    result = SupervisorAgent.route(employee, payload.message)
-    effective_sess_id = payload.session_id or f"sess-{employee.employee_id.lower()}"
+    # Direct asynchronous execution loop into Multi-Agent grid
+    result = None
+    
+    # Check if Gemini API Key is configured for AI generation
+    gemini_key = os.environ.get("GEMINI_API_KEY") or get_secret("GEMINI_API_KEY")
+    if gemini_key and gemini_key.strip():
+        try:
+            from google import genai
+            client = genai.Client(api_key=gemini_key.strip())
+            prompt = (
+                f"You are the Enterprise AI Assistant for employee {employee.name} ({employee.job_role}, {employee.team} team). "
+                f"Onboarding track: {employee.onboarding_track}. "
+                f"Respond helpfully and concisely to the employee query:\n{payload.message}"
+            )
+            ai_resp = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+            if ai_resp and ai_resp.text:
+                result = {
+                    "agent": "Gemini Conversational Agent",
+                    "response": ai_resp.text,
+                    "suggested_actions": ["Point of Contact", "Check Timesheet", "View Runbooks"]
+                }
+        except Exception:
+            # Fall back directly to the supervisor agent
+            result = None
+
+    if not result:
+        result = SupervisorAgent.route(employee, payload.message)
+
+    canonical_sess_id = f"sess-{employee.employee_id.lower()}"
+    effective_sess_id = payload.session_id if (payload.session_id and payload.session_id.lower().startswith(canonical_sess_id)) else canonical_sess_id
     
     # Save the dialogue state immediately via direct database persistence
     SessionService.append_message(effective_sess_id, employee.employee_id, "user", payload.message)
@@ -141,35 +198,67 @@ def chat(payload: ChatPayload, employee = Depends(get_current_employee)):
         "suggested_actions": result.get("suggested_actions", [])
     }
 
+
+@app.post("/api/v1/assistant/converse")
+def assistant_converse(payload: ChatPayload, employee = Depends(get_current_employee)):
+    return chat(payload, employee)
+
+
 @app.get("/api/v1/onboarding/my-status")
 def checklist_status(employee = Depends(get_current_employee)):
     return OnboardingService.get_checklist(employee.employee_id)
+
 
 @app.post("/api/v1/onboarding/complete-task")
 def complete_task(payload: TaskPayload, employee = Depends(get_current_employee)):
     OnboardingService.complete_task(employee.employee_id, payload.task_id)
     return OnboardingService.get_checklist(employee.employee_id)
 
+
+@app.get("/api/v1/onboarding/team-progress")
+def team_progress(employee = Depends(get_current_employee)):
+    return OnboardingService.get_team_progress(employee)
+
+
 @app.get("/api/v1/timesheets/my-status")
 def timesheet_status(employee = Depends(get_current_employee)):
     return OperationsService.get_timesheet_status(employee.employee_id)
+
 
 @app.post("/api/v1/timesheets/submit")
 def submit_timesheet(payload: TimesheetPayload, employee = Depends(get_current_employee)):
     return OperationsService.submit_timesheet(employee.employee_id, payload.hours, payload.notes)
 
+
 @app.get("/api/v1/knowledge/insights")
 def knowledge_insights(employee = Depends(get_current_employee)):
     return {"insights": KnowledgeService.get_authorized_insights(employee)}
 
+
+@app.get("/api/v1/knowledge/search")
+def knowledge_search(query: str = Query(""), employee = Depends(get_current_employee)):
+    chunks = KnowledgeService.search_authorized(employee, query)
+    context = KnowledgeService.format_context(employee, chunks, query)
+    return {
+        "query": query,
+        "total_chunks": len(chunks),
+        "context": context,
+        "chunks": [c.to_dict() for c in chunks]
+    }
+
+
 @app.get("/api/v1/session/history")
 def session_history(session_id: Optional[str] = None, employee = Depends(get_current_employee)):
-    sess = SessionService.get_or_create_session(employee.employee_id, session_id)
+    canonical_sess_id = f"sess-{employee.employee_id.lower()}"
+    effective_id = session_id if (session_id and session_id.lower().startswith(canonical_sess_id)) else canonical_sess_id
+    sess = SessionService.get_or_create_session(employee.employee_id, effective_id)
     return sess.to_dict()
+
 
 @app.get("/api/v1/documents/all")
 def get_all_documents(employee = Depends(get_current_employee)):
     return {"documents": KnowledgeService.get_all_documents(employee)}
+
 
 @app.get("/api/v1/documents/{doc_id}")
 def get_document(doc_id: str, employee = Depends(get_current_employee)):
@@ -178,9 +267,11 @@ def get_document(doc_id: str, employee = Depends(get_current_employee)):
         raise HTTPException(status_code=404, detail=f"Asset {doc_id} not found or domain restricted.")
     return doc
 
+
 @app.get("/api/v1/contacts/points-of-contact")
 def points_of_contact(employee = Depends(get_current_employee)):
     return OperationsService.get_points_of_contact(employee, None)
+
 
 @app.post("/api/v1/incidents/create")
 def create_incident(payload: IncidentPayload, employee = Depends(get_current_employee)):
@@ -191,11 +282,12 @@ def create_incident(payload: IncidentPayload, employee = Depends(get_current_emp
         sev = IncidentSeverity.MEDIUM
     return OperationsService.create_incident(employee, payload.category, payload.summary, sev)
 
+
 @app.get("/api/v1/personas")
 def list_personas():
-    # Feeds the debug login tester grid natively from the database engine
-    from backend.bigquery_service import BigQueryService
+    # Feeds debug login tester grid natively from database engine
     return BigQueryService.get_all_employees()
+
 
 @app.get("/api/v1/integrations/status")
 def integration_status(employee = Depends(get_current_employee)):
@@ -213,7 +305,7 @@ def integration_status(employee = Depends(get_current_employee)):
 # ----------------------------------------------------------------------------
 # 🖥️ STATIC WEB CLIENT ROUTING
 # ----------------------------------------------------------------------------
-# 1. Mount the entire public directory so /app.js, styles, etc., resolve smoothly
+# 1. Mount the entire public directory so /public/app.js, styles, etc., resolve smoothly
 app.mount("/public", StaticFiles(directory="public"), name="public")
 
 # 2. Add an explicit direct route for app.js so your HTML can fetch it from the root path
@@ -232,12 +324,18 @@ def serve_spa_frontend(catchall: str = ""):
     if catchall.startswith("api/"):
         raise HTTPException(status_code=404, detail="API route not found")
         
+    # Check if a static file in public exists
+    if catchall:
+        potential_file = os.path.join(os.getcwd(), "public", catchall)
+        if os.path.isfile(potential_file):
+            return FileResponse(potential_file)
+
     index_path = os.path.join(os.getcwd(), "public", "index.html")
     if os.path.exists(index_path):
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
-        # Interpolate client ID cleanly matching previous design patterns
-        client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+        # Interpolate client ID cleanly
+        client_id = get_config_val("GOOGLE_OAUTH_CLIENT_ID", "")
         html = html.replace("{{GOOGLE_CLIENT_ID}}", client_id)
         return HTMLResponse(content=html, status_code=200)
     return HTMLResponse(content="<h3>Static app workspace assets missing.</h3>", status_code=404)

@@ -2,8 +2,10 @@
 """
 Company AI Assistant: Enterprise Python Cloud Firestore Persistence Layer
 Direct integration with Google Cloud Firestore database using the official Google Cloud SDK.
-ai-studio-onboardingemploy-b1158660-8824-4e90-b842-3a0f086d1796
-All data is read and written directly to the Cloud Firestore database natively.
+Database: onboarding-employee-assistant-firestore-database
+Project: patchamomma-505416
+All production operational data is read from and written to Cloud Firestore natively.
+No local file storage, no in-memory fallbacks, no enterprise.db.
 """
 
 import os
@@ -17,18 +19,22 @@ class FirestoreManager:
     """
     Manages persistent Cloud Firestore read/write operations for employee sessions,
     chat histories, checklists, timesheets, and support incidents directly via the native SDK.
+    All operations are strictly cloud-database backed.
     """
 
     def __init__(self):
         self.project_id = get_config_val("GCP_PROJECT_ID", "patchamomma-505416")
         self.database_id = get_config_val("FIRESTORE_DATABASE_ID", "onboarding-employee-assistant-firestore-database")
+        self._client: Optional[firestore.Client] = None
 
     def _get_client(self) -> firestore.Client:
         """
         Natively instantiates the official Firestore Client.
-        Automatically inherits service account credentials or local Application Default Credentials (ADC).
+        Automatically inherits service account credentials or Application Default Credentials (ADC).
         """
-        return firestore.Client(project=self.project_id, database=self.database_id)
+        if self._client is None:
+            self._client = firestore.Client(project=self.project_id, database=self.database_id)
+        return self._client
 
     def test_connection(self) -> Dict[str, Any]:
         """
@@ -41,9 +47,9 @@ class FirestoreManager:
             "collections": {},
             "status": "Checking..."
         }
+
         try:
             db = self._get_client()
-            # Safely stream a single document to check read validation parameters
             chk_docs = list(db.collection("checklists").limit(1).stream())
             sess_docs = list(db.collection("sessions").limit(1).stream())
             
@@ -52,7 +58,8 @@ class FirestoreManager:
             result["collections"]["checklists"] = len(chk_docs)
             result["collections"]["sessions"] = len(sess_docs)
         except Exception as e:
-            result["status"] = f"SDK Firestore Connection failed: {str(e)}"
+            print(f"[Firestore] test_connection error: {e}", file=sys.stderr)
+            result["status"] = f"SDK Firestore Notice: {str(e)}"
 
         return result
 
@@ -61,15 +68,16 @@ class FirestoreManager:
         """
         Saves chat history and metadata directly to Cloud Firestore collection 'sessions'.
         """
+        doc_data = {
+            "session_id": session_id,
+            "employee_id": employee_id,
+            "history": history,
+            "updated_at": datetime.utcnow()
+        }
+
         try:
             db = self._get_client()
             doc_ref = db.collection("sessions").document(session_id)
-            doc_data = {
-                "session_id": session_id,
-                "employee_id": employee_id,
-                "history": history,
-                "updated_at": datetime.utcnow()
-            }
             doc_ref.set(doc_data, merge=True)
             return True
         except Exception as e:
@@ -90,7 +98,9 @@ class FirestoreManager:
                 return data
         except Exception as e:
             print(f"[Firestore] get_session error: {e}", file=sys.stderr)
+
         return None
+
     # --- Checklists & Onboarding Tasks in Cloud Firestore ---
     def get_completed_tasks(self, employee_id: str) -> List[str]:
         """
@@ -104,6 +114,7 @@ class FirestoreManager:
                 return data.get("tasks", [])
         except Exception as e:
             print(f"[Firestore] get_completed_tasks error: {e}", file=sys.stderr)
+
         return []
 
     def mark_task_completed(self, employee_id: str, task_id: str) -> None:
@@ -111,18 +122,16 @@ class FirestoreManager:
         Adds a completed task ID to Cloud Firestore collection 'checklists/{employee_id}'.
         """
         try:
+            current_tasks = self.get_completed_tasks(employee_id)
+            if task_id not in current_tasks:
+                current_tasks.append(task_id)
+
             db = self._get_client()
             doc_ref = db.collection("checklists").document(employee_id)
-            
-            # Fetch existing tasks to append safely
-            tasks = list(self.get_completed_tasks(employee_id))
-            if task_id not in tasks:
-                tasks.append(task_id)
-
             doc_data = {
                 "employee_id": employee_id,
-                "tasks": tasks,
-                "completed_count": len(tasks),
+                "tasks": current_tasks,
+                "completed_count": len(current_tasks),
                 "updated_at": datetime.utcnow()
             }
             doc_ref.set(doc_data, merge=True)
@@ -135,8 +144,9 @@ class FirestoreManager:
     # --- Timesheets in Cloud Firestore ---
     def save_timesheet(self, employee_id: str, hours: float, notes: str, salesforce_id: str = "") -> Dict[str, Any]:
         """
-        Saves weekly timesheet submission directly to Cloud Firestore collection 'timesheets/{employee_id}'.
+        Saves weekly timesheet submission directly to Cloud Firestore collection 'timesheets'.
         """
+        now = datetime.utcnow()
         doc_data = {
             "timesheet_id": f"ts_{employee_id}",
             "employee_id": employee_id,
@@ -145,23 +155,23 @@ class FirestoreManager:
             "status": "SUBMITTED",
             "submitted": True,
             "salesforce_id": salesforce_id,
-            "submitted_at": datetime.utcnow()
+            "submitted_at": now
         }
+
         try:
             db = self._get_client()
             db.collection("timesheets").document(employee_id).set(doc_data, merge=True)
         except Exception as e:
             print(f"[Firestore] save_timesheet error: {e}", file=sys.stderr)
-            
-        # Coerce time back to pipeline ISO formats for app serialization
+
         return {
             **doc_data,
-            "submitted_at": doc_data["submitted_at"].isoformat() + "Z"
+            "submitted_at": now.isoformat() + "Z"
         }
 
     def get_timesheet(self, employee_id: str) -> Optional[Dict[str, Any]]:
         """
-        Retrieves timesheet directly from Cloud Firestore collection 'timesheets/{employee_id}'.
+        Retrieves timesheet directly from Cloud Firestore collection 'timesheets'.
         """
         try:
             db = self._get_client()
@@ -173,11 +183,13 @@ class FirestoreManager:
                 return data
         except Exception as e:
             print(f"[Firestore] get_timesheet error: {e}", file=sys.stderr)
+
         return None
+
     # --- Incidents in Cloud Firestore ---
     def add_incident(self, incident: Dict[str, Any]) -> None:
         """
-        Saves an incident ticket directly to Cloud Firestore collection 'incidents/{incident_id}'.
+        Saves an incident ticket directly to Cloud Firestore collection 'incidents'.
         """
         inc_id = incident.get("incident_id") or f"inc_{int(datetime.utcnow().timestamp() * 1000)}"
         incident["incident_id"] = inc_id
@@ -185,7 +197,6 @@ class FirestoreManager:
             incident["created_at"] = datetime.utcnow()
         elif isinstance(incident["created_at"], str):
             try:
-                # Normalize pipeline string timestamps to standard datetime objects
                 clean_ts = incident["created_at"].replace("Z", "+00:00")
                 incident["created_at"] = datetime.fromisoformat(clean_ts)
             except Exception:
@@ -212,12 +223,13 @@ class FirestoreManager:
                 result.append(data)
         except Exception as e:
             print(f"[Firestore] get_all_incidents error: {e}", file=sys.stderr)
+
         return result
 
     # --- Employee Operational Profile in Cloud Firestore ---
     def save_employee(self, employee_data: Dict[str, Any]) -> None:
         """
-        Saves or updates employee profile in Cloud Firestore collection 'employees/{employee_id}'.
+        Saves or updates employee profile directly in Cloud Firestore collection 'employees'.
         """
         emp_id = employee_data.get("employee_id")
         if not emp_id:
@@ -236,6 +248,7 @@ class FirestoreManager:
             "assigned_buddy_email": employee_data.get("assigned_buddy_email", ""),
             "updated_at": datetime.utcnow(),
         }
+
         try:
             db = self._get_client()
             db.collection("employees").document(clean_id).set(store_fields, merge=True)
@@ -244,9 +257,10 @@ class FirestoreManager:
 
     def get_employee(self, employee_id: str) -> Optional[Dict[str, Any]]:
         """
-        Retrieves employee profile from Cloud Firestore collection 'employees/{employee_id}'.
+        Retrieves employee profile directly from Cloud Firestore collection 'employees'.
         """
         clean_id = employee_id.replace(" ", "_").replace("@", "_").replace(".", "_")
+
         try:
             db = self._get_client()
             doc = db.collection("employees").document(clean_id).get()
@@ -257,19 +271,19 @@ class FirestoreManager:
                 return data
         except Exception as e:
             print(f"[Firestore] get_employee error: {e}", file=sys.stderr)
+
         return None
 
     def lookup_employee_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """
-        Looks up an employee document from Cloud Firestore collection 'employees' filtered by email.
+        Looks up an employee document by email directly from Cloud Firestore collection 'employees'.
         """
         if not email:
             return None
         clean_email = email.strip().lower()
-        
+
         try:
             db = self._get_client()
-            # Execute structured server-side query filters using native client streams
             docs = db.collection("employees").where(filter=firestore.FieldFilter("email", "==", clean_email)).limit(1).stream()
             for doc in docs:
                 data = doc.to_dict() or {}
@@ -278,7 +292,8 @@ class FirestoreManager:
                 return data
         except Exception as err:
             print(f"[Firestore] lookup_employee_by_email error: {err}", file=sys.stderr)
+
         return None
 
-# Singleton instance matching your application references
+# Singleton instance matching application references
 firestore_db = FirestoreManager()

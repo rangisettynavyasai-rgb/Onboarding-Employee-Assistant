@@ -1,81 +1,73 @@
 #!/usr/bin/env python3
 """
 Company AI Assistant: Master Database-Driven Data Access Layer
-All synthetic data is loaded directly from bigquery/tables.sql and bigquery/seed_data.sql
-into the enterprise database. No hardcoded in-memory state.
+Directly queries and mutates Google Cloud BigQuery tables:
+  - patchamomma-505416.employee_ai.employees
+  - patchamomma-505416.employee_ai.employee_onboarding_tasks
+  - patchamomma-505416.employee_ai.knowledge_assets
+  - patchamomma-505416.employee_ai.knowledge_chunks
+  - patchamomma-505416.employee_ai.timesheets
+  - patchamomma-505416.employee_ai.incidents
+  - patchamomma-505416.employee_ai.team_directory_mesh
+All data comes directly from the cloud database. No local SQLite or enterprise.db.
 """
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from backend.db import db
+from backend.bigquery_service import BigQueryService
 from backend.models import (
     EmployeeRecord, AuthorizationRole, OnboardingTask, TaskStatus,
     KnowledgeAsset, KnowledgeChunk, TimesheetRecord, TimesheetStatus,
     IncidentRecord, IncidentSeverity
 )
 
+def row_to_employee(r: Dict[str, Any]) -> EmployeeRecord:
+    role_str = str(r.get('authorization_role', 'employee')).lower()
+    try:
+        auth_role = AuthorizationRole(role_str)
+    except ValueError:
+        auth_role = AuthorizationRole.EMPLOYEE
+    return EmployeeRecord(
+        employee_id=str(r.get('employee_id', '')),
+        google_subject=str(r.get('google_subject', '')),
+        email=str(r.get('email', '')),
+        name=str(r.get('name', '')),
+        department=str(r.get('department', 'Engineering')),
+        team=str(r.get('team', 'Payments')),
+        job_role=str(r.get('job_role', 'Software Engineer')),
+        authorization_role=auth_role,
+        manager_id=r.get('manager_id'),
+        location=str(r.get('location', 'HQ')),
+        joining_date=str(r.get('joining_date', '2026-09-01')),
+        onboarding_status=str(r.get('onboarding_status', 'IN_PROGRESS')),
+        is_day_one=bool(r.get('is_day_one', False)),
+        assigned_buddy_name=r.get('assigned_buddy_name', 'Priya Nair'),
+        assigned_buddy_email=r.get('assigned_buddy_email', 'priya.nair@company.com'),
+        onboarding_track=str(r.get('onboarding_track', 'Backend')),
+    )
+
 def get_all_employees() -> Dict[str, EmployeeRecord]:
-    rows = db.query('SELECT * FROM employees ORDER BY employee_id ASC')
+    rows = BigQueryService.get_all_employees()
     result = {}
     for r in rows:
-        role_str = str(r.get('authorization_role', 'employee')).lower()
-        try:
-            auth_role = AuthorizationRole(role_str)
-        except ValueError:
-            auth_role = AuthorizationRole.EMPLOYEE
-        result[r['employee_id']] = EmployeeRecord(
-            employee_id=r['employee_id'],
-            google_subject=r.get('google_subject', ''),
-            email=r.get('email', ''),
-            name=r.get('name', ''),
-            department=r.get('department', 'Engineering'),
-            team=r.get('team', 'Payments'),
-            job_role=r.get('job_role', 'Software Engineer'),
-            authorization_role=auth_role,
-            manager_id=r.get('manager_id'),
-            location=r.get('location', 'HQ'),
-            joining_date=str(r.get('joining_date', '2026-09-01')),
-            onboarding_status=r.get('onboarding_status', 'IN_PROGRESS'),
-            is_day_one=bool(r.get('is_day_one', False)),
-            assigned_buddy_name=r.get('assigned_buddy_name', 'Priya Nair'),
-            assigned_buddy_email=r.get('assigned_buddy_email', 'priya.nair@company.com'),
-            onboarding_track=r.get('onboarding_track', 'Backend'),
-        )
+        emp = row_to_employee(r)
+        if emp.employee_id:
+            result[emp.employee_id] = emp
     return result
 
 class DynamicEmployees(dict):
-    """Dynamic dictionary backed directly by database table employees."""
+    """Dynamic dictionary backed directly by BigQuery table employees."""
     def __getitem__(self, key):
-        row = db.query_one('SELECT * FROM employees WHERE employee_id = ? OR email = ? OR google_subject = ?', (key, key, key))
-        if row:
-            role_str = str(row.get('authorization_role', 'employee')).lower()
-            try:
-                auth_role = AuthorizationRole(role_str)
-            except ValueError:
-                auth_role = AuthorizationRole.EMPLOYEE
-            return EmployeeRecord(
-                employee_id=row['employee_id'],
-                google_subject=row.get('google_subject', ''),
-                email=row.get('email', ''),
-                name=row.get('name', ''),
-                department=row.get('department', 'Engineering'),
-                team=row.get('team', 'Payments'),
-                job_role=row.get('job_role', 'Software Engineer'),
-                authorization_role=auth_role,
-                manager_id=row.get('manager_id'),
-                location=row.get('location', 'HQ'),
-                joining_date=str(row.get('joining_date', '2026-09-01')),
-                onboarding_status=row.get('onboarding_status', 'IN_PROGRESS'),
-                is_day_one=bool(row.get('is_day_one', False)),
-                assigned_buddy_name=row.get('assigned_buddy_name', 'Priya Nair'),
-                assigned_buddy_email=row.get('assigned_buddy_email', 'priya.nair@company.com'),
-                onboarding_track=row.get('onboarding_track', 'Backend'),
-            )
+        emp_data = BigQueryService.get_employee(str(key))
+        if emp_data and isinstance(emp_data, list) and len(emp_data) > 0:
+            return row_to_employee(emp_data[0])
+        elif isinstance(emp_data, dict):
+            return row_to_employee(emp_data)
         raise KeyError(key)
 
     def get(self, key, default=None):
         try:
             return self[key]
-        except KeyError:
+        except (KeyError, Exception):
             return default
 
     def values(self):
@@ -94,103 +86,117 @@ class DynamicEmployees(dict):
         return iter(get_all_employees())
 
     def __contains__(self, key):
-        return bool(db.query_one('SELECT 1 FROM employees WHERE employee_id = ? OR email = ? OR google_subject = ?', (key, key, key)))
+        emp = self.get(key)
+        return emp is not None
 
     def __setitem__(self, key, emp):
         role_val = emp.authorization_role.value if hasattr(emp.authorization_role, 'value') else str(emp.authorization_role)
-        db.execute(
-            'INSERT OR REPLACE INTO employees '
-            '(employee_id, google_subject, email, name, department, team, job_role, authorization_role, manager_id, location, joining_date, onboarding_status, is_day_one, assigned_buddy_name, assigned_buddy_email, onboarding_track) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (emp.employee_id, emp.google_subject, emp.email, emp.name, emp.department, emp.team, emp.job_role, role_val, emp.manager_id, emp.location, emp.joining_date, emp.onboarding_status, int(emp.is_day_one), emp.assigned_buddy_name, emp.assigned_buddy_email, emp.onboarding_track)
+        project = BigQueryService.get_project_id()
+        dataset = BigQueryService.get_dataset()
+        mgr = f"'{emp.manager_id}'" if emp.manager_id else "NULL"
+        sql = (
+            f"INSERT INTO `{project}.{dataset}.employees` "
+            f"(employee_id, google_subject, email, name, department, team, job_role, authorization_role, manager_id, location, joining_date, onboarding_status, is_day_one, assigned_buddy_name, assigned_buddy_email, onboarding_track) "
+            f"VALUES ('{emp.employee_id}', '{emp.google_subject}', '{emp.email}', '{emp.name}', '{emp.department}', '{emp.team}', '{emp.job_role}', '{role_val}', "
+            f"{mgr}, '{emp.location}', DATE('{emp.joining_date}'), '{emp.onboarding_status}', {str(emp.is_day_one).upper()}, '{emp.assigned_buddy_name or ''}', '{emp.assigned_buddy_email or ''}', '{emp.onboarding_track}')"
         )
+        BigQueryService.execute_query(sql)
 
 EMPLOYEES = DynamicEmployees()
 
 class DynamicTasks(dict):
-    """Dynamic task dictionary backed directly by database table employee_onboarding_tasks."""
+    """Dynamic task dictionary backed directly by BigQuery table employee_onboarding_tasks."""
     def __getitem__(self, emp_id):
-        rows = db.query('SELECT * FROM employee_onboarding_tasks WHERE employee_id = ? ORDER BY due_days_after_start ASC', (emp_id,))
+        rows = BigQueryService.get_employee_tasks(str(emp_id))
         tasks = []
         for r in rows:
-            stat_str = r.get('status', 'PENDING').upper()
+            stat_str = str(r.get('status', 'PENDING')).upper()
             try:
                 task_stat = TaskStatus(stat_str)
             except ValueError:
                 task_stat = TaskStatus.PENDING
             tasks.append(
                 OnboardingTask(
-                    task_id=r['task_id'],
-                    title=r['title'],
-                    description=r['description'],
+                    task_id=str(r.get('task_id', '')),
+                    title=str(r.get('title', '')),
+                    description=str(r.get('description', '')),
                     status=task_stat,
-                    due_days_after_start=r.get('due_days_after_start', 1) or 1,
-                    completed_at=r.get('completed_at'),
-                    category=r.get('category', 'General'),
+                    due_days_after_start=int(r.get('due_days_after_start', 1) or 1),
+                    completed_at=str(r.get('completed_at', '')) if r.get('completed_at') else None,
+                    category=str(r.get('category', 'General')),
                     action_link=r.get('action_link')
                 )
             )
         return tasks
 
     def get(self, emp_id, default=None):
-        res = self[emp_id]
-        return res if res else (default if default is not None else [])
+        try:
+            res = self[emp_id]
+            return res if res else (default if default is not None else [])
+        except Exception:
+            return default if default is not None else []
 
 ONBOARDING_TASKS = DynamicTasks()
 
 class DynamicTimesheets(dict):
-    """Dynamic timesheets dictionary backed directly by database table timesheets."""
+    """Dynamic timesheets dictionary backed directly by BigQuery table timesheets."""
     def __getitem__(self, emp_id):
-        rows = db.query('SELECT * FROM timesheets WHERE employee_id = ? ORDER BY due_date DESC', (emp_id,))
+        rows = BigQueryService.get_timesheet_status(str(emp_id))
         sheets = []
         for r in rows:
-            stat_str = r.get('status', 'PENDING').upper()
+            stat_str = str(r.get('status', 'PENDING')).upper()
             try:
                 ts_stat = TimesheetStatus(stat_str)
             except ValueError:
                 ts_stat = TimesheetStatus.PENDING
             sheets.append(
                 TimesheetRecord(
-                    timesheet_id=r['timesheet_id'],
-                    employee_id=r['employee_id'],
-                    period_start=r['period_start'],
-                    period_end=r['period_end'],
-                    hours_logged=float(r.get('hours_logged', 40.0)),
+                    timesheet_id=str(r.get('timesheet_id', '')),
+                    employee_id=str(r.get('employee_id', emp_id)),
+                    period_start=str(r.get('period_start', '')),
+                    period_end=str(r.get('period_end', '')),
+                    hours_logged=float(r.get('hours_logged', 40.0) or 40.0),
                     status=ts_stat,
-                    due_date=r['due_date']
+                    due_date=str(r.get('due_date', ''))
                 )
             )
         return sheets
 
     def get(self, emp_id, default=None):
-        res = self[emp_id]
-        return res if res else (default if default is not None else [])
+        try:
+            res = self[emp_id]
+            return res if res else (default if default is not None else [])
+        except Exception:
+            return default if default is not None else []
 
     def items(self):
-        emp_ids = [r['employee_id'] for r in db.query('SELECT DISTINCT employee_id FROM timesheets')]
+        project = BigQueryService.get_project_id()
+        dataset = BigQueryService.get_dataset()
+        res = BigQueryService.execute_query(f"SELECT DISTINCT employee_id FROM `{project}.{dataset}.timesheets`")
+        emp_ids = [r['employee_id'] for r in res.get('rows', [])]
         return [(eid, self[eid]) for eid in emp_ids]
 
 TIMESHEETS = DynamicTimesheets()
 
 def get_all_incidents() -> List[IncidentRecord]:
-    rows = db.query('SELECT * FROM incidents ORDER BY created_at DESC')
+    rows = BigQueryService.get_incidents()
     incidents = []
     for r in rows:
-        sev_str = r.get('severity', 'MEDIUM').upper()
+        sev_str = str(r.get('severity', 'MEDIUM')).upper()
         try:
             sev = IncidentSeverity(sev_str)
         except ValueError:
             sev = IncidentSeverity.MEDIUM
         incidents.append(
             IncidentRecord(
-                incident_id=r['incident_id'],
-                created_by=r['created_by'],
-                category=r['category'],
-                summary=r['summary'],
+                incident_id=str(r.get('incident_id', '')),
+                created_by=str(r.get('created_by', '')),
+                category=str(r.get('category', 'IT')),
+                summary=str(r.get('summary', '')),
                 severity=sev,
-                status=r.get('status', 'OPEN'),
-                assigned_team=r.get('assigned_team', 'IT-Support'),
-                created_at=r.get('created_at') or '',
+                status=str(r.get('status', 'OPEN')),
+                assigned_team=str(r.get('assigned_team', 'IT-Support')),
+                created_at=str(r.get('created_at', '')),
                 jira_key=r.get('jira_key'),
                 jira_url=r.get('jira_url')
             )
@@ -198,54 +204,84 @@ def get_all_incidents() -> List[IncidentRecord]:
     return incidents
 
 class DynamicIncidents(list):
-    """Dynamic incident list backed directly by database table incidents."""
+    """Dynamic incident list backed directly by BigQuery table incidents."""
     def __iter__(self):
         return iter(get_all_incidents())
     def __len__(self):
         return len(get_all_incidents())
     def append(self, inc):
         sev_val = inc.severity.value if hasattr(inc.severity, 'value') else str(inc.severity)
-        db.execute(
-            'INSERT OR REPLACE INTO incidents (incident_id, created_by, category, summary, severity, status, assigned_team, created_at, jira_key, jira_url) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (inc.incident_id, inc.created_by, inc.category, inc.summary, sev_val, inc.status, inc.assigned_team, inc.created_at, inc.jira_key, inc.jira_url)
-        )
+        BigQueryService.create_incident({
+            "incident_id": inc.incident_id,
+            "created_by": inc.created_by,
+            "category": inc.category,
+            "summary": inc.summary,
+            "severity": sev_val,
+            "status": inc.status,
+            "assigned_team": inc.assigned_team,
+            "created_at": inc.created_at
+        })
 
 INCIDENTS = DynamicIncidents()
 
-def get_all_team_directory():
-    return db.query('SELECT * FROM team_directory_mesh')
+def get_all_team_directory() -> Dict[str, Dict[str, Any]]:
+    rows = BigQueryService.get_team_escalation()
+    directory: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        domain = r.get('system_domain', '')
+        if domain:
+            directory[domain] = {
+                'domain': domain,
+                'primary_lead_name': r.get('primary_lead_name', ''),
+                'primary_email': r.get('primary_email', ''),
+                'primary_on_vacation': bool(r.get('primary_on_vacation', False)),
+                'backup_lead_name': r.get('backup_lead_name', ''),
+                'backup_email': r.get('backup_email', ''),
+                'backup_on_vacation': bool(r.get('backup_on_vacation', False)),
+                'general_channel': r.get('general_team_channel', '#general-support'),
+                'general_team_channel': r.get('general_team_channel', '#general-support'),
+            }
+    return directory
 
 TEAM_DIRECTORY = get_all_team_directory()
 
 def get_all_knowledge_catalog() -> List[KnowledgeAsset]:
-    assets = db.query('SELECT * FROM knowledge_assets ORDER BY document_id ASC')
-    result = []
-    for a in assets:
-        chunks_rows = db.query('SELECT * FROM knowledge_chunks WHERE document_id = ? ORDER BY chunk_index ASC', (a['document_id'],))
-        chunks = [
+    project = BigQueryService.get_project_id()
+    dataset = BigQueryService.get_dataset()
+    assets_res = BigQueryService.execute_query(f"SELECT * FROM `{project}.{dataset}.knowledge_assets` ORDER BY document_id ASC")
+    chunks_res = BigQueryService.execute_query(f"SELECT * FROM `{project}.{dataset}.knowledge_chunks` ORDER BY chunk_index ASC")
+    
+    chunks_by_doc: Dict[str, List[KnowledgeChunk]] = {}
+    for c in chunks_res.get('rows', []):
+        doc_id = str(c.get('document_id', ''))
+        if doc_id not in chunks_by_doc:
+            chunks_by_doc[doc_id] = []
+        chunks_by_doc[doc_id].append(
             KnowledgeChunk(
-                chunk_id=c['chunk_id'],
-                document_id=c['document_id'],
-                content=c['content'],
-                access_level=c['access_level'],
-                team=c['team'],
-                chunk_index=c['chunk_index']
+                chunk_id=str(c.get('chunk_id', '')),
+                document_id=doc_id,
+                content=str(c.get('content', '')),
+                access_level=str(c.get('access_level', 'employee')),
+                team=str(c.get('team', 'ALL')),
+                chunk_index=int(c.get('chunk_index', 0))
             )
-            for c in chunks_rows
-        ]
+        )
+        
+    result = []
+    for a in assets_res.get('rows', []):
+        doc_id = str(a.get('document_id', ''))
         result.append(
             KnowledgeAsset(
-                document_id=a['document_id'],
-                title=a['title'],
-                source=a.get('source', ''),
-                gcs_uri=a.get('gcs_uri', ''),
-                team=a['team'],
-                access_level=a['access_level'],
-                document_type=a.get('document_type', 'Guide'),
-                owner=a.get('owner', 'Engineering'),
-                description=a.get('description', ''),
-                chunks=chunks
+                document_id=doc_id,
+                title=str(a.get('title', '')),
+                source=str(a.get('source', '')),
+                gcs_uri=str(a.get('gcs_uri', '')),
+                team=str(a.get('team', 'ALL')),
+                access_level=str(a.get('access_level', 'employee')),
+                document_type=str(a.get('document_type', 'Guide')),
+                owner=str(a.get('owner', 'Engineering')),
+                description=str(a.get('description', '')),
+                chunks=chunks_by_doc.get(doc_id, [])
             )
         )
     return result
