@@ -304,10 +304,37 @@ class FirestoreManager:
         """
         Retrieves employee profile from Cloud Firestore collection 'employees/{employee_id}'.
         """
-        clean_id = employee_id.replace(" ", "_")
+        clean_id = employee_id.replace(" ", "_").replace("@", "_").replace(".", "_")
         res = self._execute_request(f"employees/{clean_id}", method="GET")
         if res and "fields" in res:
             return {k: self._firestore_to_python_value(v) for k, v in res["fields"].items()}
+        return None
+
+    def lookup_employee_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """
+        Looks up an employee document from Cloud Firestore by email.
+        """
+        if not email:
+            return None
+        clean_email = email.strip().lower()
+        clean_id = clean_email.replace("@", "_").replace(".", "_")
+
+        # 1. Direct document check
+        direct_res = self.get_employee(clean_id)
+        if direct_res and direct_res.get("email", "").lower() == clean_email:
+            return direct_res
+
+        # 2. Query collection documents
+        try:
+            res = self._execute_request("employees", method="GET")
+            if res and "documents" in res:
+                for doc in res["documents"]:
+                    fields = doc.get("fields", {})
+                    parsed = {k: self._firestore_to_python_value(v) for k, v in fields.items()}
+                    if parsed.get("email", "").lower() == clean_email:
+                        return parsed
+        except Exception as err:
+            print(f"[Firestore] lookup_employee_by_email notice: {err}", file=sys.stderr)
         return None
 
 # Singleton instance

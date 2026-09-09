@@ -41,17 +41,28 @@ def main():
         action = payload.get("action")
         identity = payload.get("identity") or payload.get("token") or "EMP-2026-001"
 
-        employee = AuthService.resolve_employee(identity)
-        if not employee and action not in ["health"]:
-            print(json.dumps({"error": "Unauthorized: Unable to resolve employee identity"}))
-            return
-
         if action == "health":
             output = {
                 "status": "ok",
                 "service": "Onboarding-Employee-Assistant-Python-Backend",
                 "runtime": "Python 3.10",
             }
+            print(json.dumps(output))
+            return
+
+        if action == "register_google_profile":
+            email = payload.get("email", "")
+            name = payload.get("name", "")
+            sub = payload.get("sub", "")
+            picture = payload.get("picture", "")
+            emp = AuthService.register_google_profile(email, name, sub, picture)
+            print(json.dumps(emp.to_dict()))
+            return
+
+        employee = AuthService.resolve_employee(identity)
+        if not employee:
+            print(json.dumps({"error": "Unauthorized: Unable to resolve employee identity"}))
+            return
         elif action == "resolve_employee" or action == "login":
             password = payload.get("password")
             if action == "login" and password is not None:

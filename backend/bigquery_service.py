@@ -139,7 +139,11 @@ class BigQueryService:
         clean_id = employee_id.replace("'", "\\'")
         project = cls.get_project_id()
         dataset = cls.get_dataset()
-        sql = f"SELECT * FROM `{project}.{dataset}.employees` WHERE employee_id = '{clean_id}' LIMIT 1"
+        sql = (
+            f"SELECT * FROM `{project}.{dataset}.employees` "
+            f"WHERE employee_id = '{clean_id}' OR email = '{clean_id}' OR google_subject = '{clean_id}' "
+            f"LIMIT 1"
+        )
         res = cls.execute_query(sql)
         if res.get("success") and res.get("rows"):
             return res["rows"][0]

@@ -241,7 +241,14 @@ class AuthService:
                 pass
 
         # 4. Check Firestore database for existing saved employee record
-        fs_emp = firestore_db.get_employee(clean_token) or firestore_db.lookup_employee_by_email(clean_token)
+        fs_emp = None
+        try:
+            fs_emp = firestore_db.get_employee(clean_token)
+            if not fs_emp and hasattr(firestore_db, "lookup_employee_by_email"):
+                fs_emp = firestore_db.lookup_employee_by_email(clean_token)
+        except Exception as fs_err:
+            print(f"[AuthService] Firestore lookup notice: {fs_err}", file=sys.stderr)
+
         if fs_emp:
             role_str = fs_emp.get("authorization_role", "employee").lower()
             role_enum = AuthorizationRole.EMPLOYEE
@@ -322,7 +329,45 @@ class AuthService:
     @staticmethod
     def register_google_profile(email: str, name: str, sub: str = "", picture: str = "") -> EmployeeRecord:
         email_clean = email.strip().lower()
-        if any(alias in email_clean for alias in ["rnavyasai", "rangisettynavyasai"]):
+
+        # 1. First check BigQuery for matching employee record
+        try:
+            bq_emp = BigQueryService.get_employee(email_clean)
+            if bq_emp:
+                role_val = bq_emp.get("authorization_role", "employee").lower()
+                role_enum = AuthorizationRole.EMPLOYEE
+                if role_val == "manager":
+                    role_enum = AuthorizationRole.MANAGER
+                elif role_val == "hr":
+                    role_enum = AuthorizationRole.HR
+                elif role_val == "it":
+                    role_enum = AuthorizationRole.IT
+
+                emp = EmployeeRecord(
+                    employee_id=bq_emp.get("employee_id", "EMP-2026-001"),
+                    google_subject=sub or bq_emp.get("google_subject", ""),
+                    email=email_clean,
+                    name=name or bq_emp.get("name", "Navya Rangisetty"),
+                    department=bq_emp.get("department", "Engineering"),
+                    team=bq_emp.get("team", "Payments"),
+                    job_role=bq_emp.get("job_role", "Software Engineer"),
+                    authorization_role=role_enum,
+                    manager_id=bq_emp.get("manager_id"),
+                    location=bq_emp.get("location", "HQ"),
+                    joining_date=str(bq_emp.get("joining_date", "2026-09-01")),
+                    onboarding_status=bq_emp.get("onboarding_status", "IN_PROGRESS"),
+                    is_day_one=bool(bq_emp.get("is_day_one", False)),
+                    assigned_buddy_name=bq_emp.get("assigned_buddy_name", "Priya Nair"),
+                    assigned_buddy_email=bq_emp.get("assigned_buddy_email", "priya.nair@company.com"),
+                    onboarding_track=bq_emp.get("onboarding_track", "Backend"),
+                )
+                _EMPLOYEES[emp.employee_id] = emp
+                firestore_db.save_employee(emp.to_dict())
+                return emp
+        except Exception as bq_err:
+            print(f"[AuthService] BigQuery lookup notice in register_google_profile: {bq_err}", file=sys.stderr)
+
+        if any(alias in email_clean for alias in ["navya", "rnavyasai", "rangisetty"]):
             emp = _EMPLOYEES.get("EMP-2026-001")
             if emp:
                 emp.email = email_clean
