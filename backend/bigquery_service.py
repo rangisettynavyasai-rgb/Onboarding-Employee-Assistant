@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Company AI Assistant: Master BigQuery Enterprise Integration Service
-Directly manages reads and writes for BigQuery tables:
+Directly manages reads and writes for BigQuery tables using the official Google Cloud SDK Client:
   - patchamomma-505416.employee_ai.employees
   - patchamomma-505416.employee_ai.employee_onboarding_tasks
   - patchamomma-505416.employee_ai.knowledge_assets
@@ -16,22 +16,20 @@ Backed by enterprise database schema and seeds in bigquery/ with automated fallb
 import os
 import sys
 import json
-import urllib.request
-import urllib.error
 import re
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from backend.config import get_config_val, get_secret
+from backend.config import get_config_val
+from google.cloud import bigquery
+from google.cloud.exceptions import GoogleCloudError
 
 
 class BigQueryService:
     """
-    Direct REST client for Google BigQuery executing queries and DML mutations.
-    Provides complete SQL persistence across all enterprise entities.
+    Official SDK client connection manager for Google BigQuery executing queries and DML mutations.
+    Provides complete SQL persistence across all enterprise entities with active SQLite fallbacks.
     """
 
-    _cached_token: Optional[str] = None
-    _token_expiry: float = 0.0
     _is_available: Optional[bool] = None
 
     @classmethod
@@ -41,33 +39,6 @@ class BigQueryService:
     @classmethod
     def get_dataset(cls) -> str:
         return get_config_val("BIGQUERY_DATASET", "employee_ai")
-
-    @classmethod
-    def get_gcp_access_token(cls) -> Optional[str]:
-        """
-        Retrieves GCP OAuth2 token from instance metadata server in Cloud Run if available.
-        """
-        if os.environ.get("GCP_ACCESS_TOKEN"):
-            return os.environ.get("GCP_ACCESS_TOKEN")
-
-        import time
-        now = time.time()
-        if cls._cached_token and now < cls._token_expiry:
-            return cls._cached_token
-
-        try:
-            req = urllib.request.Request(
-                "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
-                headers={"Metadata-Flavor": "Google"}
-            )
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                cls._cached_token = data.get("access_token")
-                expires_in = data.get("expires_in", 3600)
-                cls._token_expiry = now + max(60, expires_in - 120)
-                return cls._cached_token
-        except Exception:
-            return None
 
     @classmethod
     def _execute_local_sql(cls, sql: str) -> Dict[str, Any]:
@@ -106,63 +77,38 @@ class BigQueryService:
     @classmethod
     def execute_query(cls, sql: str) -> Dict[str, Any]:
         """
-        Executes a SQL statement via the BigQuery REST API (v2 query endpoint)
-        or directly on the database engine.
+        Executes a SQL statement via the official BigQuery Client SDK
+        or falls back directly to the local database engine if unauthenticated.
         """
         if cls._is_available is False:
             return cls._execute_local_sql(sql)
 
         project_id = cls.get_project_id()
-        token = cls.get_gcp_access_token()
-
-        url = f"https://bigquery.googleapis.com/bigquery/v2/projects/{project_id}/queries"
-        payload = json.dumps({
-            "query": sql,
-            "useLegacySql": False,
-            "timeoutMs": 10000
-        }).encode("utf-8")
-
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-user-project": project_id
-        }
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
 
         try:
-            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=6) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                cls._is_available = True
+            # Native client automatically inherits Cloud Run Service Account context
+            client = bigquery.Client(project=project_id)
+            query_job = client.query(sql)
+            results = query_job.result()  # Waits for query to complete
 
-                schema_fields = [f.get("name") for f in data.get("schema", {}).get("fields", [])]
-                raw_rows = data.get("rows", [])
-                parsed_rows = []
-
-                for r in raw_rows:
-                    row_vals = [f.get("v") for f in r.get("f", [])]
-                    row_dict = dict(zip(schema_fields, row_vals))
-                    parsed_rows.append(row_dict)
-
-                return {
-                    "success": True,
-                    "rows": parsed_rows,
-                    "total_rows": int(data.get("totalRows", len(parsed_rows))),
-                    "job_complete": data.get("jobComplete", True),
-                    "num_dml_affected_rows": data.get("numDmlAffectedRows"),
-                    "engine": "cloud_bigquery"
-                }
-        except urllib.error.HTTPError as he:
-            body = ""
-            try:
-                body = he.read().decode("utf-8")
-            except Exception:
-                pass
-            if he.code in (401, 403):
+            cls._is_available = True
+            
+            # Parse rows into lists of plain dict objects
+            parsed_rows = [dict(row) for row in results]
+            
+            return {
+                "success": True,
+                "rows": parsed_rows,
+                "total_rows": len(parsed_rows),
+                "job_complete": True,
+                "num_dml_affected_rows": query_job.num_dml_affected_rows,
+                "engine": "cloud_bigquery"
+            }
+        except (GoogleCloudError, Exception) as e:
+            # Drop cleanly into local operational database fallback patterns if credentials break
+            print(f"[BigQueryService] Redirecting query stream to local engine. Notice: {str(e)}", file=sys.stderr)
+            if "401" in str(e) or "403" in str(e) or "credentials" in str(e).lower():
                 cls._is_available = False
-            return cls._execute_local_sql(sql)
-        except Exception as e:
-            cls._is_available = False
             return cls._execute_local_sql(sql)
 
     @classmethod
@@ -180,7 +126,7 @@ class BigQueryService:
         )
         res = cls.execute_query(sql)
         if res.get("success") and res.get("rows"):
-            return res["rows"][0]
+            return res["rows"]
         return None
 
     @classmethod
@@ -195,7 +141,6 @@ class BigQueryService:
         if res.get("success"):
             return res.get("rows", [])
         return []
-
     @classmethod
     def update_employee_status(cls, employee_id: str, status: str) -> bool:
         """
@@ -385,55 +330,32 @@ class BigQueryService:
     @classmethod
     def test_connection(cls) -> Dict[str, Any]:
         """
-        Tests connection to BigQuery, checks dataset existence, and validates IAM permissions.
+        Tests connection to BigQuery dataset using the official client library.
         """
         project_id = cls.get_project_id()
-        dataset = cls.get_dataset()
-        token = cls.get_gcp_access_token()
+        dataset_id = cls.get_dataset()
 
         result = {
             "project_id": project_id,
-            "dataset": dataset,
+            "dataset": dataset_id,
             "connected": False,
-            "authenticated": token is not None,
             "status": "Checking...",
-            "iam_role_required": "roles/bigquery.dataEditor and roles/bigquery.jobUser",
             "details": {}
         }
 
-        url = f"https://bigquery.googleapis.com/bigquery/v2/projects/{project_id}/datasets/{dataset}"
-        headers = {
-            "x-goog-user-project": project_id
-        }
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-
         try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=4) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                result["connected"] = True
-                result["status"] = f"Connected successfully to BigQuery dataset: {dataset}"
-                result["details"] = {
-                    "location": data.get("location"),
-                    "lastModifiedTime": data.get("lastModifiedTime")
-                }
-        except urllib.error.HTTPError as he:
-            body = ""
-            try:
-                body = he.read().decode("utf-8")
-            except Exception:
-                pass
-
-            if he.code == 403:
-                result["status"] = "BigQuery API reachable; IAM roles 'roles/bigquery.dataEditor' and 'roles/bigquery.jobUser' required on Cloud Run Service Account."
-                result["error_code"] = 403
-            elif he.code == 404:
-                result["status"] = f"BigQuery API reachable; dataset '{dataset}' not found. Run bigquery/tables.sql to create."
-                result["error_code"] = 404
-            else:
-                result["status"] = f"BigQuery HTTP {he.code}: {he.reason}"
+            client = bigquery.Client(project=project_id)
+            dataset = client.get_dataset(f"{project_id}.{dataset_id}")
+            
+            result["connected"] = True
+            result["status"] = f"Connected successfully to BigQuery dataset: {dataset_id}"
+            result["details"] = {
+                "location": dataset.location,
+                "created": dataset.created.isoformat() if dataset.created else None,
+                "modified": dataset.modified.isoformat() if dataset.modified else None
+            }
         except Exception as e:
-            result["status"] = f"Connection check notice: {str(e)}"
+            result["connected"] = False
+            result["status"] = f"BigQuery SDK Resolution Failure: {str(e)}"
 
         return result

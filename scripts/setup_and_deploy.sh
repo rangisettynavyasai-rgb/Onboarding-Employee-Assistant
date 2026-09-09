@@ -63,6 +63,7 @@ ROLES=(
   "roles/storage.objectAdmin"
   "roles/datastore.user"
   "roles/serviceusage.serviceUsageConsumer"
+  "roles/secretmanager.secretAccessor"
 )
 
 for role in "${ROLES[@]}"; do
@@ -142,7 +143,9 @@ gcloud run deploy "${SERVICE_NAME}" \
   --service-account="${SA_EMAIL}" \
   --allow-unauthenticated \
   --set-env-vars="GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},BIGQUERY_DATASET=${BQ_DATASET},GCS_BUCKET=${GCS_BUCKET},FIRESTORE_DATABASE_ID=${FIRESTORE_DB},ENVIRONMENT=production" \
+  --set-secrets="GEMINI_API_KEY=gemini-api-key:latest,FIREBASE_API_KEY=firebase-api-key:latest" \
   --port=3000
+
 
 echo ""
 echo "============================================================"
