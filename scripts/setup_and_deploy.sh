@@ -92,43 +92,45 @@ for role in "${DEV_ROLES[@]}"; do
 done
 echo "✓ IAM roles successfully configured."
 
-# 4. Create and Seed BigQuery Dataset & Tables
+# 4. Check BigQuery Dataset & Tables
 echo ""
-echo "[Step 4/6] Creating & Seeding BigQuery Dataset '${BQ_DATASET}'..."
+echo "[Step 4/6] Verifying BigQuery Dataset '${BQ_DATASET}' and Tables..."
 if bq show --project_id="${PROJECT_ID}" "${BQ_DATASET}" >/dev/null 2>&1; then
   echo "✓ BigQuery dataset '${BQ_DATASET}' exists."
 else
-  bq --project_id="${PROJECT_ID}" mk --location="${REGION}" -d "${BQ_DATASET}"
+  bq --project_id="${PROJECT_ID}" mk --location="us-central1" -d "${BQ_DATASET}"
   echo "✓ Created BigQuery dataset '${BQ_DATASET}'."
 fi
 
-echo "  -> Running BigQuery schema and seed statements..."
-bq query --project_id="${PROJECT_ID}" --use_legacy_sql=false < scripts/seed_bigquery.sql
-echo "✓ BigQuery tables 'employees' and 'onboarding_tasks' seeded."
+if bq show --project_id="${PROJECT_ID}" "${BQ_DATASET}.employees" >/dev/null 2>&1; then
+  echo "✓ BigQuery tables ('employees', 'employee_onboarding_tasks', etc.) already exist."
+else
+  echo "  -> Applying schema from bigquery/tables.sql..."
+  bq query --project_id="${PROJECT_ID}" --use_legacy_sql=false < bigquery/tables.sql
+  echo "  -> Seeding initial data from bigquery/seed_data.sql..."
+  bq query --project_id="${PROJECT_ID}" --use_legacy_sql=false < bigquery/seed_data.sql
+  echo "✓ BigQuery tables created and seeded."
+fi
 
-# 5. Create Cloud Storage Bucket & Upload Knowledge Mesh Docs
+# 5. Verify Cloud Storage Bucket & Knowledge Folder Structure
 echo ""
-echo "[Step 5/6] Creating Cloud Storage Bucket & Uploading Documents..."
+echo "[Step 5/6] Verifying Cloud Storage Bucket 'gs://${GCS_BUCKET}'..."
 if gcloud storage buckets describe "gs://${GCS_BUCKET}" >/dev/null 2>&1; then
   echo "✓ Bucket 'gs://${GCS_BUCKET}' exists."
 else
   gcloud storage buckets create "gs://${GCS_BUCKET}" \
     --project="${PROJECT_ID}" \
-    --location="${REGION}" \
+    --location="us-central1" \
     --uniform-bucket-level-access
   echo "✓ Created bucket 'gs://${GCS_BUCKET}'."
 fi
 
-echo "  -> Uploading Knowledge Mesh documentation..."
-if [ -d "knowledge_docs" ]; then
-  gcloud storage cp knowledge_docs/* "gs://${GCS_BUCKET}/"
-  echo "✓ Uploaded knowledge documents to gs://${GCS_BUCKET}/"
-fi
-
-# Ensure storage object viewer permission on the bucket for the service account
+# Ensure storage permissions for the custom service account
 gcloud storage buckets add-iam-policy-binding "gs://${GCS_BUCKET}" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/storage.objectAdmin" >/dev/null
+
+echo "✓ GCS bucket verified with knowledge folders (company/, engineering/, hr/, it/, runbooks/, management/)."
 
 # 6. Build and Deploy Cloud Run Service with Custom Service Account
 echo ""

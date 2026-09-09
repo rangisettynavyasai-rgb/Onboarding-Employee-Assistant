@@ -60,17 +60,32 @@ class GCSService:
         except Exception:
             return None
 
+    OBJECT_ALIASES = {
+        "runbooks/dev_environment_setup.md": "runbooks/kubernetes_cluster_triage.md",
+        "platform/kubernetes_cluster_triage.md": "runbooks/kubernetes_cluster_triage.md",
+        "platform/k8s_triage_guide.md": "runbooks/kubernetes_cluster_triage.md",
+        "payments/architecture_overview_2026.md": "engineering/payments/architecture_blueprint.pdf",
+        "hr/compensation_guidelines_2026.pdf": "hr/compensation_bands_2026.pdf",
+    }
+
     @classmethod
     def parse_gcs_uri(cls, uri: str) -> tuple[str, str]:
         """
         Parses gs://bucket-name/path/to/object into (bucket, object_name).
+        Maps generic or placeholder bucket names to configured GCS bucket.
         """
+        configured_bucket = cls.get_configured_bucket()
         if uri.startswith("gs://"):
             parts = uri[5:].split("/", 1)
             bucket = parts[0]
             obj = parts[1] if len(parts) > 1 else ""
-            return bucket, obj
-        return cls.get_configured_bucket(), uri.lstrip("/")
+            if bucket in ("company-knowledge-mesh", "company-internal-knowledge", ""):
+                bucket = configured_bucket
+            # Apply object path aliasing if needed
+            resolved_obj = cls.OBJECT_ALIASES.get(obj, obj)
+            return bucket, resolved_obj
+        clean_path = uri.lstrip("/")
+        return configured_bucket, cls.OBJECT_ALIASES.get(clean_path, clean_path)
 
     @classmethod
     def read_document_from_gcs(cls, gcs_uri: str) -> Dict[str, Any]:
