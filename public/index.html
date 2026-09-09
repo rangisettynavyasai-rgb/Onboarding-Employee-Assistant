@@ -945,24 +945,9 @@
         <span>Quick Persona Switcher (For Demo & Testing)</span>
       </button>
 
-      <!-- Developer Persona Switcher for Quick Verification (Collapsed by Default) -->
+      <!-- Developer Persona Switcher (Dynamically Populated from Enterprise Database) -->
       <div id="persona-grid-container" class="persona-grid" style="display: none;">
-        <button type="button" class="persona-btn" onclick="signInWithMockToken('mock-google-token-rahul')">
-          <span class="persona-name">Rahul Sharma</span>
-          <span class="persona-role">Day-1 SWE • Payments (EMP-2026-001)</span>
-        </button>
-        <button type="button" class="persona-btn" onclick="signInWithMockToken('mock-google-token-maya')">
-          <span class="persona-name">Maya Lin</span>
-          <span class="persona-role">Day-1 Intern • Platform (EMP-2026-002)</span>
-        </button>
-        <button type="button" class="persona-btn" onclick="signInWithMockToken('mock-google-token-sarah')">
-          <span class="persona-name">Sarah Jenkins</span>
-          <span class="persona-role">Manager • Payments (EMP-2026-010)</span>
-        </button>
-        <button type="button" class="persona-btn" onclick="signInWithMockToken('mock-google-token-amanda')">
-          <span class="persona-name">Amanda Walker</span>
-          <span class="persona-role">HR Specialist (EMP-2026-009)</span>
-        </button>
+        <div style="font-size: 12px; color: var(--text-muted); padding: 8px;">Loading personas from enterprise database...</div>
       </div>
     </section>
 

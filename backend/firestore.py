@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.error
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from backend.config import get_config_val
+from backend.config import get_config_val, get_secret
 
 class FirestoreManager:
     """
@@ -26,9 +26,10 @@ class FirestoreManager:
     def __init__(self):
         self.project_id = get_config_val("GCP_PROJECT_ID", "patchamomma-505416")
         self.database_id = get_config_val("FIRESTORE_DATABASE_ID", "onboarding-employee-assistant-firestore-database")
-        self.api_key = os.environ.get("FIREBASE_API_KEY", "")
+        self.api_key = get_secret("FIREBASE_API_KEY", "")
         self._cached_token: Optional[str] = None
         self._token_expiry: float = 0.0
+        self._is_available: Optional[bool] = None
 
     def _get_auth_token(self) -> Optional[str]:
         """
@@ -64,11 +65,14 @@ class FirestoreManager:
             f"databases/{self.database_id}/documents"
         )
 
-    def _execute_request(self, path: str, method: str = "GET", payload: Optional[bytes] = None) -> Optional[Dict[str, Any]]:
+    def _execute_request(self, path: str, method: str = "GET", payload: Optional[bytes] = None, force: bool = False) -> Optional[Dict[str, Any]]:
         """
         Executes a Firestore REST API request directly to Google Cloud Firestore.
         Uses OAuth2 Bearer token in Cloud Run, or direct database access.
         """
+        if not force and self._is_available is False:
+            return None
+
         clean_path = path.lstrip("/")
         headers = {"Content-Type": "application/json"} if payload else {}
         token = self._get_auth_token()
@@ -81,12 +85,16 @@ class FirestoreManager:
             req = urllib.request.Request(url, data=payload, method=method, headers=headers)
             with urllib.request.urlopen(req, timeout=5) as resp:
                 raw = resp.read().decode("utf-8")
+                self._is_available = True
                 return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as he:
             if he.code != 404:
                 print(f"[Firestore] HTTP {he.code} on {method} {clean_path}: {he.reason}", file=sys.stderr)
+            if he.code in (401, 403):
+                self._is_available = False
         except Exception as e:
             print(f"[Firestore] Network error on {method} {clean_path}: {e}", file=sys.stderr)
+            self._is_available = False
 
         return None
 

@@ -59,6 +59,17 @@ def main():
             print(json.dumps(emp.to_dict()))
             return
 
+        if action == "list_employees":
+            from backend.bigquery_service import BigQueryService
+            employees = BigQueryService.get_all_employees()
+            print(json.dumps({"employees": employees}))
+            return
+
+        if action == "check_secrets":
+            from backend.config import check_secrets_status
+            print(json.dumps({"secrets": check_secrets_status()}))
+            return
+
         employee = AuthService.resolve_employee(identity)
         if not employee:
             print(json.dumps({"error": "Unauthorized: Unable to resolve employee identity"}))
@@ -79,11 +90,11 @@ def main():
             output = ProactiveService.generate_landing(employee)
         elif action == "chat":
             message = payload.get("message", "")
-            session_id = payload.get("session_id")
+            effective_sess_id = payload.get("session_id") or f"sess-{employee.employee_id.lower()}"
             
             # Record user turn in persistent session
-            if session_id:
-                SessionService.append_message(session_id, employee.employee_id, "user", message)
+            if message:
+                SessionService.append_message(effective_sess_id, employee.employee_id, "user", message)
 
             result = SupervisorAgent.route(employee, message)
             resp_text = result.get("response", "")
@@ -91,14 +102,14 @@ def main():
             suggested = result.get("suggested_actions", [])
 
             # Record assistant turn in persistent session
-            if session_id:
-                SessionService.append_message(session_id, employee.employee_id, "assistant", resp_text, agent_name)
+            if resp_text:
+                SessionService.append_message(effective_sess_id, employee.employee_id, "assistant", resp_text, agent_name)
 
             output = {
                 "response": resp_text,
                 "agent_invoked": agent_name,
                 "suggested_actions": suggested,
-                "session_id": session_id or f"sess-{employee.employee_id.lower()}",
+                "session_id": effective_sess_id,
                 "employee_id": employee.employee_id,
             }
         elif action == "get_checklist":

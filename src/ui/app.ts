@@ -263,8 +263,8 @@ export async function initializeSession(token: string, isRestoring: boolean = fa
     // Fetch Knowledge Mesh Insights for Sidebar Widget
     await refreshKnowledgeInsights();
 
-    // Restore persistent conversation history from Firestore
-    await restoreSessionHistory(state.currentSessionId, landing.name);
+    // Restore persistent conversation history from Enterprise DB & Firestore
+    await restoreSessionHistory(state.currentSessionId, landing.name, landing.employee_id);
   } catch (err: any) {
     console.error("Session initialization failed:", err);
     state.activeBearerToken = null;
@@ -288,38 +288,74 @@ export async function initializeSession(token: string, isRestoring: boolean = fa
   }
 }
 
-export async function restoreSessionHistory(sessionId: string, userName: string): Promise<void> {
+export async function restoreSessionHistory(sessionId: string, userName: string, employeeId?: string): Promise<void> {
+  const stream = $<HTMLElement>("chat-stream");
+  const localKey = employeeId ? `onboarding_chat_${employeeId}` : null;
+  let hasLocalMessages = false;
+
+  // 1. Instant optimistic restore from local storage cache
+  if (localKey) {
+    try {
+      const cached = localStorage.getItem(localKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          stream.innerHTML = "";
+          parsed.forEach((m: { role: string; content: string; agent?: string }) => {
+            appendChatMessage(
+              m.role,
+              m.content,
+              m.role === "assistant" ? m.agent || "Supervisor Agent" : null,
+              [],
+              false
+            );
+          });
+          hasLocalMessages = true;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. Fetch authoritative persistent session history from backend database (enterprise.db / Firestore)
   try {
     const sessionData = await apiRequest<any>(
       `/api/v1/session/history?session_id=${sessionId}`
     );
-    const stream = $<HTMLElement>("chat-stream");
-    stream.innerHTML = "";
 
     if (sessionData.history && sessionData.history.length > 0) {
+      stream.innerHTML = "";
       sessionData.history.forEach((m: { role: string; content: string; agent?: string }) => {
         appendChatMessage(
           m.role,
           m.content,
-          m.role === "assistant" ? m.agent || "Supervisor Agent" : null
+          m.role === "assistant" ? m.agent || "Supervisor Agent" : null,
+          [],
+          false
         );
       });
-    } else {
+      if (localKey) {
+        localStorage.setItem(localKey, JSON.stringify(sessionData.history));
+      }
+    } else if (!hasLocalMessages && stream.children.length === 0) {
       appendChatMessage(
         "assistant",
         `👋 Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`,
         "Supervisor Agent",
-        ["Check Timesheet", "View Pending Tasks", "Point of Contact", "Search Runbooks"]
+        ["Check Timesheet", "View Pending Tasks", "Point of Contact", "Search Runbooks"],
+        false
       );
     }
   } catch (e) {
-    console.warn("Could not load previous session history:", e);
-    appendChatMessage(
-      "assistant",
-      `👋 Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`,
-      "Supervisor Agent",
-      ["Check Timesheet", "View Pending Tasks", "Point of Contact", "Search Runbooks"]
-    );
+    console.warn("Could not load remote session history:", e);
+    if (!hasLocalMessages && stream.children.length === 0) {
+      appendChatMessage(
+        "assistant",
+        `👋 Hello **${userName}**! I'm your secure AI Onboarding & Employee Assistant. How can I help you today?`,
+        "Supervisor Agent",
+        ["Check Timesheet", "View Pending Tasks", "Point of Contact", "Search Runbooks"],
+        false
+      );
+    }
   }
 }
 
@@ -881,7 +917,8 @@ export function appendChatMessage(
   role: string,
   text: string,
   agentName: string | null = null,
-  suggestions: string[] = []
+  suggestions: string[] = [],
+  saveToCache: boolean = true
 ): void {
   const stream = document.getElementById("chat-stream");
   if (!stream) return;
@@ -911,6 +948,21 @@ export function appendChatMessage(
   bubble.innerHTML = content;
   stream.appendChild(bubble);
   stream.scrollTop = stream.scrollHeight;
+
+  // Persist locally for instant session restoration
+  if (saveToCache && state.currentUserProfile?.employee_id) {
+    const key = `onboarding_chat_${state.currentUserProfile.employee_id}`;
+    try {
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      existing.push({
+        role,
+        content: text,
+        agent: agentName,
+        timestamp: new Date().toISOString()
+      });
+      localStorage.setItem(key, JSON.stringify(existing.slice(-50)));
+    } catch (_) {}
+  }
 }
 
 export function quickPrompt(txt: string): void {
@@ -1181,6 +1233,14 @@ export async function refreshCloudSyncStatus(): Promise<void> {
     const fsConnected = Boolean(fs.connected);
 
     container.innerHTML = `
+      <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div>
+          <div style="font-size: 13px; font-weight: 600; color: #34d399; margin-bottom: 2px;">⚡ Enterprise Relational DB Active (Zero Data Loss)</div>
+          <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">All onboarding tasks, employee directory data, timesheets, and chat history are persistently recorded in the local enterprise database engine seeded from <code>bigquery/tables.sql</code>. If Cloud BigQuery or GCS return 403 IAM Pending, the app transparently handles all operations locally.</div>
+        </div>
+        <span class="role-tag" style="background: rgba(16,185,129,0.2); color: #34d399; font-size: 11px; white-space: nowrap;">ACTIVE ENGINE</span>
+      </div>
+
       <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px 18px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -1535,6 +1595,31 @@ export function signInWithMockToken(token: string): void {
   initializeSession(token);
 }
 
+export async function loadPersonasFromDb(): Promise<void> {
+  const container = document.getElementById("persona-grid-container");
+  if (!container) return;
+  try {
+    const res = await fetch("/api/v1/personas");
+    if (!res.ok) return;
+    const employees = await res.json();
+    if (!Array.isArray(employees) || employees.length === 0) return;
+    container.innerHTML = "";
+    employees.slice(0, 8).forEach((emp: any) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "persona-btn";
+      btn.onclick = () => signInWithMockToken(emp.employee_id);
+      btn.innerHTML = `
+        <span class="persona-name">${emp.name}</span>
+        <span class="persona-role">${emp.job_role} • ${emp.team} (${emp.employee_id})</span>
+      `;
+      container.appendChild(btn);
+    });
+  } catch (err) {
+    console.warn("Could not load personas from DB:", err);
+  }
+}
+
 export function signOut(): void {
   sessionStorage.removeItem(AUTH_TOKEN_KEY);
   state.activeBearerToken = null;
@@ -1587,6 +1672,7 @@ export function signOut(): void {
   handleGoogleSignInClick,
   handleEmployeeSignIn,
   signInWithMockToken,
+  loadPersonasFromDb,
   signOut,
   showAuthAlert,
   dismissAuthAlert,
@@ -1598,6 +1684,7 @@ Object.assign(window, (window as any).app);
 // Initialize Google Identity Services on load and restore existing session
 window.addEventListener("DOMContentLoaded", () => {
   initGoogleIdentity();
+  loadPersonasFromDb();
 
   // Check for existing session token in sessionStorage
   const savedToken = sessionStorage.getItem(AUTH_TOKEN_KEY);

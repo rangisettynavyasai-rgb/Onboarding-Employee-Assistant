@@ -947,29 +947,56 @@ class ProactiveService:
 
 
 class SessionService:
-    """Conversational Session Management & Turn Persistence backed by Google Cloud Firestore."""
+    """Conversational Session Management & Turn Persistence backed by Google Cloud Firestore and Enterprise DB."""
 
     @staticmethod
     def get_or_create_session(employee_id: str, session_id: Optional[str] = None) -> UserSession:
-        effective_id = session_id or f"sess-{employee_id.lower()}-{str(int(time.time()))[-6:]}"
+        effective_id = session_id or f"sess-{employee_id.lower()}"
         if effective_id in _SESSIONS:
             sess = _SESSIONS[effective_id]
             if sess.employee_id == employee_id:
                 sess.last_accessed_at = datetime.utcnow().isoformat() + "Z"
                 return sess
 
-        # Query Cloud Firestore for existing session history
-        fs_record = firestore_db.get_session(effective_id)
-        if fs_record and fs_record.get("employee_id") == employee_id:
-            restored = UserSession(
-                session_id=effective_id,
-                employee_id=employee_id,
-                created_at=fs_record.get("created_at", datetime.utcnow().isoformat() + "Z"),
-                last_accessed_at=datetime.utcnow().isoformat() + "Z",
-                history=fs_record.get("history", []),
+        # 1. Query Cloud Firestore for existing session history
+        try:
+            fs_record = firestore_db.get_session(effective_id)
+            if fs_record and fs_record.get("employee_id") == employee_id:
+                restored = UserSession(
+                    session_id=effective_id,
+                    employee_id=employee_id,
+                    created_at=fs_record.get("created_at", datetime.utcnow().isoformat() + "Z"),
+                    last_accessed_at=datetime.utcnow().isoformat() + "Z",
+                    history=fs_record.get("history", []),
+                )
+                _SESSIONS[effective_id] = restored
+                return restored
+        except Exception:
+            pass
+
+        # 2. Query Enterprise DB for existing session history
+        try:
+            from backend.db import db
+            row = db.query_one(
+                "SELECT session_id, employee_id, history_json, created_at, last_accessed_at "
+                "FROM chat_sessions WHERE session_id = ? OR employee_id = ? "
+                "ORDER BY last_accessed_at DESC LIMIT 1",
+                (effective_id, employee_id)
             )
-            _SESSIONS[effective_id] = restored
-            return restored
+            if row:
+                raw_json = row.get("history_json")
+                hist = json.loads(raw_json) if raw_json else []
+                restored = UserSession(
+                    session_id=row.get("session_id") or effective_id,
+                    employee_id=employee_id,
+                    created_at=row.get("created_at") or (datetime.utcnow().isoformat() + "Z"),
+                    last_accessed_at=datetime.utcnow().isoformat() + "Z",
+                    history=hist,
+                )
+                _SESSIONS[effective_id] = restored
+                return restored
+        except Exception as db_err:
+            print(f"[SessionService] DB session restore notice: {db_err}", file=sys.stderr)
 
         now = datetime.utcnow().isoformat() + "Z"
         new_session = UserSession(
@@ -980,15 +1007,34 @@ class SessionService:
             history=[],
         )
         _SESSIONS[effective_id] = new_session
-        firestore_db.save_session(effective_id, employee_id, [])
+        SessionService.save_session(new_session)
         return new_session
 
     @staticmethod
     def save_session(session: UserSession) -> None:
         session.last_accessed_at = datetime.utcnow().isoformat() + "Z"
         _SESSIONS[session.session_id] = session
-        # Persist asynchronously/reliably to Firestore
-        firestore_db.save_session(session.session_id, session.employee_id, session.history)
+
+        # 1. Persist asynchronously/reliably to Cloud Firestore
+        try:
+            firestore_db.save_session(session.session_id, session.employee_id, session.history)
+        except Exception:
+            pass
+
+        # 2. Persist directly to Enterprise DB
+        try:
+            from backend.db import db
+            hist_str = json.dumps(session.history)
+            db.execute(
+                "INSERT INTO chat_sessions (session_id, employee_id, history_json, created_at, last_accessed_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET "
+                "history_json = excluded.history_json, "
+                "last_accessed_at = excluded.last_accessed_at",
+                (session.session_id, session.employee_id, hist_str, session.created_at, session.last_accessed_at)
+            )
+        except Exception as db_err:
+            print(f"[SessionService] DB save session notice: {db_err}", file=sys.stderr)
 
     @staticmethod
     def append_message(session_id: str, employee_id: str, role: str, content: str, agent: Optional[str] = None) -> UserSession:

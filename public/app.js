@@ -1223,6 +1223,30 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
   function signInWithMockToken(token) {
     initializeSession(token);
   }
+  async function loadPersonasFromDb() {
+    const container = document.getElementById("persona-grid-container");
+    if (!container) return;
+    try {
+      const res = await fetch("/api/v1/personas");
+      if (!res.ok) return;
+      const employees = await res.json();
+      if (!Array.isArray(employees) || employees.length === 0) return;
+      container.innerHTML = "";
+      employees.slice(0, 8).forEach((emp) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "persona-btn";
+        btn.onclick = () => signInWithMockToken(emp.employee_id);
+        btn.innerHTML = `
+        <span class="persona-name">${emp.name}</span>
+        <span class="persona-role">${emp.job_role} \u2022 ${emp.team} (${emp.employee_id})</span>
+      `;
+        container.appendChild(btn);
+      });
+    } catch (err) {
+      console.warn("Could not load personas from DB:", err);
+    }
+  }
   function signOut() {
     sessionStorage.removeItem(AUTH_TOKEN_KEY);
     state.activeBearerToken = null;
@@ -1273,6 +1297,7 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
     handleGoogleSignInClick,
     handleEmployeeSignIn,
     signInWithMockToken,
+    loadPersonasFromDb,
     signOut,
     showAuthAlert,
     dismissAuthAlert
@@ -1280,6 +1305,7 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
   Object.assign(window, window.app);
   window.addEventListener("DOMContentLoaded", () => {
     initGoogleIdentity();
+    loadPersonasFromDb();
     const savedToken = sessionStorage.getItem(AUTH_TOKEN_KEY);
     if (savedToken) {
       const restoringBanner = document.getElementById("session-restoring-banner");

@@ -299,7 +299,7 @@ Critical Directives:
 
         // Protect with 5-second timeout so it falls back to multi-agent immediately if API is unreachable
         const genPromise = ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model: "gemini-2.5-flash",
           contents: `${systemPrompt}\n\nEmployee Query: "${message}"`,
         });
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -331,7 +331,7 @@ Critical Directives:
               session_id: effectiveSessionId,
               user_message: message,
               assistant_message: replyText,
-              agent: "Company AI Assistant (Gemini 3.8)",
+              agent: "Company AI Assistant (Gemini 2.5 Flash)",
             });
           } catch (recErr: any) {
             console.warn("Firestore session persist note:", recErr.message);
@@ -340,7 +340,7 @@ Critical Directives:
           res.json({
             response: replyText,
             session_id: effectiveSessionId,
-            agent_invoked: "Company AI Assistant (Gemini 3.8)",
+            agent_invoked: "Company AI Assistant (Gemini 2.5 Flash)",
             suggested_actions: suggested,
             timestamp: new Date().toISOString(),
           });
