@@ -9,12 +9,13 @@
   "gcsBucket": "patchamomma-505416-employee-ai-knowledge",
   "googleOAuthClientId": "874836211421-q56rjcminj3kr9fviretuu8ndfp9krtm.apps.googleusercontent.com",
   "jira": {
-    "host": "https://jira.company.internal",
-    "projectKey": "OPS",
-    "email": "onboarding-bot@company.internal"
+    "host": "https://onboarding-employee-assistant.atlassian.net",
+    "projectKey": "IGEKRFOI-1",
+    "email": "rangisettynavyasai@gmail.com"
   },
   "salesforce": {
-    "instanceUrl": "https://salesforce.company.internal"
+    "instanceUrl": "https://onboardingemployeeassistant-dev-ed.develop.my.salesforce.com",
+    "clientId": "3MVG9JJwBBbcN47JT15oMTPL7ovBol2zzmaNQrcBw9xjyRa9ZqAfY2Maa9OGGmjgH4mHZiENxxB7C10Iz6MQ2"
   },
   "secrets": {
     "geminiApiKey": {
@@ -26,11 +27,6 @@
       "secretId": "firebase-api-key",
       "envVar": "FIREBASE_API_KEY",
       "description": "Firebase Web API key for Cloud Firestore database sync"
-    },
-    "jiraEmail": {
-      "secretId": "jira-email",
-      "envVar": "JIRA_EMAIL",
-      "description": "Atlassian account email for Jira Cloud integration"
     },
     "jiraApiToken": {
       "secretId": "jira-api-token",
@@ -46,7 +42,6 @@
   "secretIds": {
     "GEMINI_API_KEY": "gemini-api-key",
     "FIREBASE_API_KEY": "firebase-api-key",
-    "JIRA_EMAIL": "jira-email",
     "JIRA_API_TOKEN": "jira-api-token",
     "SALESFORCE_ACCESS_TOKEN": "salesforce-token"
   }

@@ -194,13 +194,16 @@ class BigQueryService:
         team = str(emp_dict.get("team", "Unassigned")).replace("'", "\\'")
         job_role = str(emp_dict.get("job_role", "Software Engineer")).replace("'", "\\'")
         auth_role = str(emp_dict.get("authorization_role", "employee")).replace("'", "\\'")
-        manager_id = f"'{str(emp_dict.get('manager_id')).replace('\'', '\\\'')}'" if emp_dict.get("manager_id") else "NULL"
+        mgr_val = str(emp_dict.get('manager_id')).replace("'", "\\'") if emp_dict.get("manager_id") else None
+        manager_id = f"'{mgr_val}'" if mgr_val else "NULL"
         location = str(emp_dict.get("location", "HQ")).replace("'", "\\'")
         joining_date = str(emp_dict.get("joining_date", datetime.utcnow().strftime("%Y-%m-%d"))).replace("'", "\\'")
         onboarding_status = str(emp_dict.get("onboarding_status", "NOT_STARTED")).replace("'", "\\'")
         is_day_one = "TRUE" if emp_dict.get("is_day_one", True) else "FALSE"
-        buddy_name = f"'{str(emp_dict.get('assigned_buddy_name')).replace('\'', '\\\'')}'" if emp_dict.get("assigned_buddy_name") else "NULL"
-        buddy_email = f"'{str(emp_dict.get('assigned_buddy_email')).replace('\'', '\\\'')}'" if emp_dict.get("assigned_buddy_email") else "NULL"
+        bname_val = str(emp_dict.get('assigned_buddy_name')).replace("'", "\\'") if emp_dict.get("assigned_buddy_name") else None
+        buddy_name = f"'{bname_val}'" if bname_val else "NULL"
+        bemail_val = str(emp_dict.get('assigned_buddy_email')).replace("'", "\\'") if emp_dict.get("assigned_buddy_email") else None
+        buddy_email = f"'{bemail_val}'" if bemail_val else "NULL"
         track = str(emp_dict.get("onboarding_track", "General")).replace("'", "\\'")
 
         project = cls.get_project_id()
@@ -232,7 +235,8 @@ class BigQueryService:
             due_days = int(t.get("due_days_after_start", 1) or 1)
             completed_at = f"TIMESTAMP('{t.get('completed_at')}')" if t.get("completed_at") else "NULL"
             cat = str(t.get("category", "General")).replace("'", "\\'")
-            action_link = f"'{str(t.get('action_link')).replace('\'', '\\\'')}'" if t.get("action_link") else "NULL"
+            act_val = str(t.get('action_link')).replace("'", "\\'") if t.get("action_link") else None
+            action_link = f"'{act_val}'" if act_val else "NULL"
             value_rows.append(f"('{task_id}', '{clean_emp}', '{title}', '{desc}', '{status}', {due_days}, {completed_at}, '{cat}', {action_link})")
         
         sql = (

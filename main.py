@@ -69,15 +69,15 @@ class IncidentPayload(BaseModel):
 
 # Identity Verification Dependency: Extracted cleanly from headers
 def _sanitize_knowledge_text(value: Any) -> str:
-    """Remove internal Knowledge Mesh identifiers and storage details from UI data."""
+    """Remove internal Knowledge Mesh identifiers, gs:// references, and storage details from UI data."""
     if value is None:
         return ""
     text = str(value)
     text = re.sub(r"\bINS-DOC-[A-Za-z0-9_-]+\b", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bDOC-[A-Za-z0-9_-]+\b", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\bCHK-[A-Za-z0-9_-]+\b", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"gs://[^\s`\)\]\}]+", "company onboarding resources", text, flags=re.IGNORECASE)
-    text = re.sub(r"\b(?:document|asset|chunk)\s*id\s*[:=]\s*[^,;\n]+", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"gs://[^\s`\)\]\}]+", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(?:document|asset|chunk|doc)\s*id\s*[:=]\s*[^,;\n]+", "", text, flags=re.IGNORECASE)
     return re.sub(r"[ \t]{2,}", " ", text).strip()
 
 
@@ -91,13 +91,19 @@ def _public_knowledge_chunk(chunk: Any) -> dict:
 
 def _public_document(doc: dict) -> dict:
     """Return only fields that are safe and useful for the Knowledge Mesh UI."""
+    raw_content = doc.get("full_content", "") or doc.get("description", "") or ""
+    # Strip leading markdown # Title or filename header from the beginning of document content
+    # to avoid double file name / title when viewed in the document modal
+    cleaned_content = re.sub(r"^\s*#\s+[^\n]+(?:\r?\n)+", "", raw_content)
+    cleaned_content = re.sub(r"^\s*[\w.-]+\.(?:md|pdf|txt)\s*(?:\r?\n)+", "", cleaned_content, flags=re.IGNORECASE)
+
     return {
         "title": _sanitize_knowledge_text(doc.get("title", "")),
         "category": _sanitize_knowledge_text(doc.get("category") or doc.get("document_type") or "Runbook"),
         "description": _sanitize_knowledge_text(doc.get("description", "")),
         "team": _sanitize_knowledge_text(doc.get("team", "")),
-        "source": _sanitize_knowledge_text(doc.get("source", "Knowledge Mesh")),
-        "full_content": _sanitize_knowledge_text(doc.get("full_content", "")),
+        "source": "Knowledge Mesh",
+        "full_content": _sanitize_knowledge_text(cleaned_content),
     }
 
 
@@ -114,7 +120,7 @@ def get_current_employee(authorization: Optional[str] = Header(None)):
 # ----------------------------------------------------------------------------
 # 🔐 AUTHENTICATION & HEALTH ENDPOINTS
 # ----------------------------------------------------------------------------
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "ok", "service": "Onboarding-Employee-Assistant-FastAPI", "timestamp": "2026-09-09T17:43:00Z"}
 
@@ -366,16 +372,24 @@ def list_personas():
 
 @app.get("/api/v1/integrations/status")
 def integration_status(employee = Depends(get_current_employee)):
+    print("Integration Status: Firestore=%s, BigQuery=%s, GCS=%s, Jira=%s, Salesforce=%s, Calendar=%s, Secrets=%s" % (
+        firestore_db.test_connection(),
+        BigQueryService.test_connection(),
+        GCSService.test_connection(),
+        JiraService.get_status(),
+        SalesforceService.is_configured(),
+        CalendarService.get_out_of_office_status(None),
+        {env_var: bool(os.environ.get(env_var, "").strip()) for env_var in get_secret_ids().keys()}
+    ))
     return {
         "firestore": firestore_db.test_connection(),
         "bigquery": BigQueryService.test_connection(),
         "gcs": GCSService.test_connection(),
-        "jira": {"site_url": JiraService.get_site_url(), "configured": JiraService.is_configured(), "project_key": JiraService.PROJECT_KEY},
+        "jira": JiraService.get_status(),
         "salesforce": {"instance_url": SalesforceService.get_instance_url(), "configured": SalesforceService.is_configured()},
         "calendar": CalendarService.get_out_of_office_status(None),
         "secrets": {env_var: {"secret_id": sec_id, "configured": bool(os.environ.get(env_var, "").strip())} for env_var, sec_id in get_secret_ids().items()}
     }
-
 
 # ----------------------------------------------------------------------------
 # 🖥️ STATIC WEB CLIENT ROUTING
@@ -389,11 +403,11 @@ def serve_compiled_javascript_bundle():
     js_path = os.path.join(os.getcwd(), "public", "app.js")
     if os.path.exists(js_path):
         return FileResponse(js_path, media_type="application/javascript")
-    raise HTTPException(status_code=404, detail="JavaScript bundle not found. Run 'npm run build:ui' to compile.")
+    raise HTTPException(status_code=404, detail="JavaScript bundle not found in public/app.js.")
 
 # 3. Serve the SPA frontend for the homepage and clean up route intercepts
-@app.get("/")
-@app.get("/{catchall:path}")
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/{catchall:path}", methods=["GET", "HEAD"])
 def serve_spa_frontend(catchall: str = ""):
     # Prevent this catchall route from accidentally intercepting API calls that trailing-slash miss
     if catchall.startswith("api/"):

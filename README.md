@@ -1,14 +1,14 @@
 # Enterprise AI Onboarding & Employee Assistant Framework
 
-[![Node.js](https://img.shields.io/badge/Node.js-22_LTS-green.svg)](https://nodejs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Python](https://img.shields.io/badge/Python-3.10-yellow.svg)](https://www.python.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
+[![Uvicorn](https://img.shields.io/badge/ASGI-Uvicorn-2ca5e0.svg)](https://www.uvicorn.org/)
 [![Google Cloud Run](https://img.shields.io/badge/Google%20Cloud-Cloud%20Run-blue.svg)](https://cloud.google.com/run)
 [![Google Cloud Firestore](https://img.shields.io/badge/Database-Cloud%20Firestore-orange.svg)](https://cloud.google.com/firestore)
 [![Gemini 3.6 Flash](https://img.shields.io/badge/Google%20GenAI-Gemini%203.6%20Flash-purple.svg)](https://ai.google.dev/)
 [![Google Secret Manager](https://img.shields.io/badge/Security-Secret%20Manager-red.svg)](https://cloud.google.com/secret-manager)
 
-Production-grade **Multi-Agent Enterprise Employee & Onboarding Assistant**. Engineered with a zero-trust **Node.js 22 Express Gateway** (`server.ts`), official **Google Gen AI SDK** (`@google/genai`), an enterprise **Python 3.10 Microservice** (`backend/`), and durable persistence powered by **Google Cloud Firestore**.
+Production-grade **Multi-Agent Enterprise Employee & Onboarding Assistant**. Engineered with a high-performance **Python FastAPI Backend** (`main.py`), official **Google Gen AI SDK** (`@google/genai` / `google-genai`), enterprise domain microservices (`backend/`), BigQuery & Cloud Storage knowledge mesh, and durable persistence powered by **Google Cloud Firestore**.
 
 ---
 
@@ -25,20 +25,22 @@ Production-grade **Multi-Agent Enterprise Employee & Onboarding Assistant**. Eng
                                            │ Bearer Token / ID Token
                                            ▼
                        ┌─────────────────────────────────────────┐
-                       │       Express Gateway (Node.js 22)      │
-                       │               server.ts                 │
+                       │       FastAPI Service (Python 3.10)     │
+                       │                 main.py                 │
                        │  • Bearer Token / JWT Verification      │
-                       │  • Server-Side Gemini 3.6 Flash Route   │
+                       │  • Server-Side Gemini Intelligence      │
                        │  • Static UI & Web Client Hosting       │
+                       │  • RESTful API Endpoints (/api/v1/*)    │
                        └────────────────────┬────────────────────┘
-                                           │ Zero-Copy JSON RPC
+                                           │
                                            ▼
                        ┌─────────────────────────────────────────┐
-                       │    Python Microservice (Python 3.10)    │
-                       │            backend/runner.py            │
+                       │           Enterprise Domain Mesh        │
+                       │               backend/services.py       │
                        │  • AuthService & Employee Resolution    │
                        │  • Supervisor Agent & Domain Mesh       │
                        │  • Dual-Mode Integration Engine         │
+                       │  • BigQuery Knowledge Mesh & GCS Loader │
                        └───────┬─────────────────────────┬───────┘
                                │                         │
                ┌───────────────┘                         └───────────────┐
@@ -62,18 +64,15 @@ Production-grade **Multi-Agent Enterprise Employee & Onboarding Assistant**. Eng
 
 | File / Path | Category | Purpose | Actively Used? |
 | :--- | :--- | :--- | :--- |
-| **`app.config.json`** | Configuration | **Single non-secret configuration file** for GitHub. Contains GCP project ID, Firestore DB name, Google OAuth Client ID, Jira host/project, Salesforce URL, and environment settings. | **Yes** — Loaded on startup by Node.js and Python. |
+| **`app.config.json`** | Configuration | **Single non-secret configuration file** for GitHub. Contains GCP project ID, Firestore DB name, Google OAuth Client ID, Jira host/project, Salesforce URL, and environment settings. | **Yes** — Loaded on startup by Python. |
 | **`.env.example`** | Configuration | Documentation template listing all environment variables and secrets. Never contains real secrets. | **Yes** — Deployment reference. |
-| **`.gitignore`** | Security | Blocks secret files (`.env`), build outputs (`dist/`), `node_modules/`, and `__pycache__/` from Git. | **Yes** — Enforces security boundaries. |
-| **`Dockerfile`** | Deployment | Multi-runtime container definition (Node.js 22 + Python 3) for Google Cloud Run. | **Yes** — Used for Cloud Run container builds. |
-| **`package.json`** | Manifest | Defines dependencies (`express`, `@google/genai`, `cors`, `dotenv`, `esbuild`, `typescript`) and build scripts. | **Yes** — Build and dependency management. |
-| **`tsconfig.json`** | Compiler | TypeScript compiler configuration for client and server code. | **Yes** — Typechecking and build validation. |
+| **`.gitignore`** | Security | Blocks secret files (`.env`), build outputs, and `__pycache__/` from Git. | **Yes** — Enforces security boundaries. |
+| **`Dockerfile`** | Deployment | Python 3.10 slim container definition for Google Cloud Run with Uvicorn. | **Yes** — Used for Cloud Run container builds. |
+| **`requirements.txt`** | Manifest | Defines Python dependencies (`fastapi`, `uvicorn`, `google-genai`, `google-cloud-firestore`, `google-cloud-bigquery`). | **Yes** — Python dependency management. |
 | **`metadata.json`** | Container | AI Studio runtime metadata (app name, capabilities, frame permissions). | **Yes** — Cloud container metadata. |
-| **`server.ts`** | API Gateway | Express.js API gateway listening on port 3000. Handles routing, authentication, Gemini AI fallback, and bridges to Python. | **Yes** — Primary web application server. |
-| **`src/pythonBridge.ts`** | IPC Bridge | Spawns Python 3 backend subprocess (`python3 -m backend.runner`), passes JSON via `stdin`, reads responses from `stdout`. | **Yes** — Connects Node.js to Python backend. |
-| **`src/ui/app.ts`** | Frontend | Client-side TypeScript source. Handles Google Sign-In, onboarding checklist UI, timesheets, incident reporting, and chat. | **Yes** — Source for browser UI. |
-| **`public/index.html`** | Frontend | Single-page application entry point HTML. Injects Google Identity Services SDK and layout components. | **Yes** — Served by Express to browser. |
-| **`public/app.js`** | Frontend | Compiled client-side JavaScript bundle generated from `src/ui/app.ts` via esbuild. | **Yes** — Executed in user's browser. |
+| **`main.py`** | Application Server | FastAPI application server listening on port 3000. Handles RESTful routing, authentication, Gemini AI chat, Knowledge Mesh retrieval, and serves static frontend. | **Yes** — Primary web application server. |
+| **`public/index.html`** | Frontend | Single-page application entry point HTML. Injects Google Identity Services SDK and layout components. | **Yes** — Served by FastAPI to browser. |
+| **`public/app.js`** | Frontend | Client-side JavaScript bundle implementing interactive dashboard, modals, timesheets, and Knowledge Mesh viewer. | **Yes** — Executed in user's browser. |
 | **`backend/runner.py`** | Python Microservice | Entry point for Python IPC calls. Parses incoming action payloads and routes to the appropriate domain service. | **Yes** — Main execution router. |
 | **`backend/config.py`** | Python Microservice | Configuration loader. Resolves variables in priority order: environment variables / Secret Manager first, `app.config.json` second. | **Yes** — Used across Python modules. |
 | **`backend/firestore.py`** | Database | `FirestoreManager` handling persistent read/write calls to Google Cloud Firestore with safe in-memory fallback. | **Yes** — Cloud Firestore persistence layer. |
@@ -239,18 +238,19 @@ gcloud run deploy ${SERVICE_NAME} \
 ## 🛠️ Local Development
 
 ```bash
-# 1. Install dependencies
-npm install
+# 1. (Optional) Create and activate a Python virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# 2. (Optional) Set up local secrets in .env for development
+# 2. Install Python dependencies
+pip install -r requirements.txt
+
+# 3. (Optional) Set up local secrets in .env for development
 cp .env.example .env
-# Edit .env with your local GEMINI_API_KEY
+# Edit .env with your local GEMINI_API_KEY (optional for local staging/fallback mode)
 
-# 3. Compile frontend bundle
-npm run build:ui
-
-# 4. Start local development server
-npm run dev
+# 4. Start the FastAPI development server
+uvicorn main:app --host 0.0.0.0 --port 3000 --reload
 ```
 
-Visit `http://localhost:3000` to access the application.
+Visit `http://localhost:3000` to access the application (or view interactive OpenAPI Swagger documentation at `http://localhost:3000/docs`).

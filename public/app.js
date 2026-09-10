@@ -572,22 +572,34 @@
       }
       const sourceBadge = document.getElementById("doc-modal-source-badge");
       if (sourceBadge) {
-        if (doc.gcs_status === "LOADED_FROM_GCS" || doc.source?.includes("Google Cloud Storage")) {
-          sourceBadge.textContent = "\u2601 Live GCS Document";
-          sourceBadge.style.display = "inline-block";
-          sourceBadge.style.background = "rgba(16,185,129,0.15)";
-          sourceBadge.style.color = "#34d399";
-          sourceBadge.style.border = "1px solid rgba(16,185,129,0.3)";
-        } else {
-          sourceBadge.textContent = "\u2601 GCS Knowledge Mesh";
-          sourceBadge.style.display = "inline-block";
-          sourceBadge.style.background = "rgba(59,130,246,0.15)";
-          sourceBadge.style.color = "#60a5fa";
-          sourceBadge.style.border = "1px solid rgba(59,130,246,0.3)";
-        }
+        sourceBadge.textContent = "Verified Document";
+        sourceBadge.style.display = "inline-block";
+        sourceBadge.style.background = "rgba(59,130,246,0.15)";
+        sourceBadge.style.color = "#60a5fa";
+        sourceBadge.style.border = "1px solid rgba(59,130,246,0.3)";
       }
       if (contentEl) {
-        const raw = doc.full_content || doc.description || "No content available.";
+        let raw = doc.full_content || doc.description || "No content available.";
+        // Clean any residual storage, doc id, or gs:// artifacts
+        raw = raw.replace(/gs:\/\/[^\s`\)\]\}]+/gi, "");
+        raw = raw.replace(/\b(?:document|asset|chunk|doc)\s*id\s*[:=]\s*[^,;\n]+/gi, "");
+        raw = raw.replace(/\b(?:DOC|CHK|INS-DOC)-[A-Za-z0-9_-]+\b/gi, "");
+
+        // Remove redundant top-level title / file name from document content
+        const trimmed = raw.trim();
+        const h1Match = trimmed.match(/^#\s+([^\n]+)(?:\r?\n)*/);
+        if (h1Match) {
+          raw = trimmed.substring(h1Match[0].length).trim();
+        } else {
+          const lines = trimmed.split("\n");
+          if (lines.length > 1) {
+            const firstLineClean = lines[0].trim().replace(/\.(?:md|pdf|txt)$/i, "").toLowerCase();
+            const docTitleClean = (doc.title || "").toLowerCase();
+            if (firstLineClean && (docTitleClean.includes(firstLineClean) || firstLineClean.includes(docTitleClean))) {
+              raw = lines.slice(1).join("\n").trim();
+            }
+          }
+        }
         contentEl.innerHTML = renderMarkdownToHtml(raw);
       }
     } catch (err) {
@@ -598,20 +610,6 @@
   function closeDocumentModal() {
     const modal = document.getElementById("document-modal");
     if (modal) modal.style.display = "none";
-  }
-  function copyDocumentUri() {
-    if (!currentActiveDocument?.gcs_uri) return;
-    navigator.clipboard.writeText(currentActiveDocument.gcs_uri).then(() => {
-      const btn = document.getElementById("doc-copy-uri-btn");
-      if (btn) {
-        const original = btn.textContent;
-        btn.textContent = "\u2713 Copied!";
-        setTimeout(() => {
-          if (btn) btn.textContent = original;
-        }, 2e3);
-      }
-    }).catch(() => {
-    });
   }
   function askAboutCurrentDocument() {
     if (!currentActiveDocument) return;
@@ -1058,9 +1056,18 @@
       const bq = res.bigquery || {};
       const gcs = res.gcs || {};
       const fs = res.firestore || {};
+      const jira = res.jira || {};
+      const sforce = res.salesforce || {};
+      const calendar = res.calendar || {};
+      const secrets = res.secrets || {};
       const bqConnected = Boolean(bq.connected);
       const gcsConnected = Boolean(gcs.connected);
       const fsConnected = Boolean(fs.connected);
+      const jiraConnected = Boolean(jira.connected);
+      const sforceConnected = Boolean(sforce.connected);
+      const calendarConnected = Boolean(calendar.connected);
+      const secretsConnected = Boolean(secrets.connected);
+      console.log("Sync Status: BigQuery=%s, GCS=%s, Firestore=%s, Jira=%s, Salesforce=%s, Calendar=%s, Secrets=%s", bqConnected, gcsConnected, fsConnected, jiraConnected, sforceConnected, calendarConnected, secretsConnected);
       container.innerHTML = `
       <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
         <div>
@@ -1476,7 +1483,6 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
     handleTimesheetSubmit,
     openDocumentModal,
     closeDocumentModal,
-    copyDocumentUri,
     askAboutCurrentDocument,
     openRunbooksModal,
     closeRunbooksModal,
