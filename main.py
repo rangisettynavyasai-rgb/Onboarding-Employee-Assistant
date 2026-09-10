@@ -68,6 +68,39 @@ class IncidentPayload(BaseModel):
     severity: Optional[str] = "MEDIUM"
 
 # Identity Verification Dependency: Extracted cleanly from headers
+def _sanitize_knowledge_text(value: Any) -> str:
+    """Remove internal Knowledge Mesh identifiers and storage details from UI data."""
+    if value is None:
+        return ""
+    text = str(value)
+    text = re.sub(r"\bINS-DOC-[A-Za-z0-9_-]+\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bDOC-[A-Za-z0-9_-]+\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bCHK-[A-Za-z0-9_-]+\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"gs://[^\s`\)\]\}]+", "company onboarding resources", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(?:document|asset|chunk)\s*id\s*[:=]\s*[^,;\n]+", "", text, flags=re.IGNORECASE)
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
+
+
+def _public_knowledge_chunk(chunk: Any) -> dict:
+    return {
+        "title": _sanitize_knowledge_text(getattr(chunk, "title", "")),
+        "content": _sanitize_knowledge_text(getattr(chunk, "content", "")),
+        "team": _sanitize_knowledge_text(getattr(chunk, "team", "")),
+    }
+
+
+def _public_document(doc: dict) -> dict:
+    """Return only fields that are safe and useful for the Knowledge Mesh UI."""
+    return {
+        "title": _sanitize_knowledge_text(doc.get("title", "")),
+        "category": _sanitize_knowledge_text(doc.get("category") or doc.get("document_type") or "Runbook"),
+        "description": _sanitize_knowledge_text(doc.get("description", "")),
+        "team": _sanitize_knowledge_text(doc.get("team", "")),
+        "source": _sanitize_knowledge_text(doc.get("source", "Knowledge Mesh")),
+        "full_content": _sanitize_knowledge_text(doc.get("full_content", "")),
+    }
+
+
 def get_current_employee(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization Bearer header.")
@@ -259,7 +292,19 @@ def submit_timesheet(payload: TimesheetPayload, employee = Depends(get_current_e
 
 @app.get("/api/v1/knowledge/insights")
 def knowledge_insights(employee = Depends(get_current_employee)):
-    return {"insights": KnowledgeService.get_authorized_insights(employee)}
+    insights = KnowledgeService.get_authorized_insights(employee)
+    safe_insights = []
+    for insight in insights:
+        safe_insights.append({
+            "title": _sanitize_knowledge_text(insight.get("title", "")),
+            "category": _sanitize_knowledge_text(insight.get("category", "Runbook")),
+            "summary": _sanitize_knowledge_text(insight.get("summary", "")),
+            "team": _sanitize_knowledge_text(insight.get("team", "")),
+            "effective_date": insight.get("effective_date", ""),
+            "highlight_tag": _sanitize_knowledge_text(insight.get("highlight_tag", "POLICY")),
+            "action_suggestion": _sanitize_knowledge_text(insight.get("action_suggestion", "")),
+        })
+    return {"insights": safe_insights}
 
 
 @app.get("/api/v1/knowledge/search")
@@ -269,8 +314,8 @@ def knowledge_search(query: str = Query(""), employee = Depends(get_current_empl
     return {
         "query": query,
         "total_chunks": len(chunks),
-        "context": context,
-        "chunks": [c.to_dict() for c in chunks]
+        "context": _sanitize_knowledge_text(context),
+        "chunks": [_public_knowledge_chunk(c) for c in chunks]
     }
 
 
@@ -284,15 +329,18 @@ def session_history(session_id: Optional[str] = None, employee = Depends(get_cur
 
 @app.get("/api/v1/documents/all")
 def get_all_documents(employee = Depends(get_current_employee)):
-    return {"documents": KnowledgeService.get_all_documents(employee)}
+    documents = KnowledgeService.get_all_documents(employee)
+    return {"documents": [_public_document(doc) for doc in documents]}
 
 
 @app.get("/api/v1/documents/{doc_id}")
 def get_document(doc_id: str, employee = Depends(get_current_employee)):
     doc = KnowledgeService.get_document(employee, doc_id)
     if not doc:
-        raise HTTPException(status_code=404, detail=f"Asset {doc_id} not found or domain restricted.")
-    return doc
+        raise HTTPException(status_code=404, detail="Document not found or unavailable.")
+    if isinstance(doc, dict) and doc.get("error"):
+        raise HTTPException(status_code=403, detail="This document is not available to your current access profile.")
+    return _public_document(doc)
 
 
 @app.get("/api/v1/contacts/points-of-contact")

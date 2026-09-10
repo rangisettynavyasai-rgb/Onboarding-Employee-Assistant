@@ -25,45 +25,42 @@ class CalendarService:
         time_min = now.isoformat() + "Z"
         time_max = week_end.isoformat() + "Z"
 
-        # Corporate roster fallback status when OAuth token is not passed
-        default_team_status = [
-            {
-                "name": "Sarah Jenkins",
-                "email": "sarah.jenkins@company.com",
-                "role": "Engineering Manager",
-                "status": "In Office",
-                "source": "Google Calendar",
-                "notes": "Working core hours (09:00 - 17:00 PST)",
-                "calendar_synced": bool(access_token)
-            },
-            {
-                "name": "Priya Nair",
-                "email": "priya.nair@company.com",
-                "role": "Staff Engineer (Assigned Buddy)",
-                "status": "In Office",
-                "source": "Google Calendar",
-                "notes": "Available for onboarding syncs & code reviews",
-                "calendar_synced": bool(access_token)
-            },
-            {
-                "name": "Amanda Walker",
-                "email": "amanda.walker@company.com",
-                "role": "People Operations Lead",
-                "status": "In Office",
-                "source": "Google Calendar",
-                "notes": "HR & Benefits drop-in hours: 14:00 - 16:00 PST",
-                "calendar_synced": bool(access_token)
-            },
-            {
-                "name": "DevSecOps Incident Commander",
-                "email": "security-oncall@company.com",
-                "role": "Security Operations",
-                "status": "On-Call",
-                "source": "PagerDuty / Calendar",
-                "notes": "Active 24/7 pager rotation",
-                "calendar_synced": bool(access_token)
+        # Corporate roster comes from the BigQuery employee directory. Calendar is only the
+        # availability layer; it must not redefine the canonical person/contact information.
+        default_team_status = []
+        try:
+            from backend.bigquery_service import BigQueryService
+            rows = BigQueryService.get_all_employees()
+            preferred_emails = {
+                "sarah.j@company.com": "Engineering Manager",
+                "priya.nair@company.com": "Staff Engineer (Assigned Buddy)",
+                "amanda.w@company.com": "People Operations Lead",
+                "marcus.v@company.com": "IT Systems Administrator",
             }
-        ]
+            for row in rows:
+                email = str(row.get("email", "")).lower()
+                if email not in preferred_emails:
+                    continue
+                default_team_status.append({
+                    "name": str(row.get("name", "")),
+                    "email": email,
+                    "role": preferred_emails[email],
+                    "status": "In Office",
+                    "source": "Google Calendar",
+                    "notes": "Availability is verified from Google Calendar when permitted.",
+                    "calendar_synced": False,
+                })
+        except Exception as db_err:
+            print(f"[CalendarService] Directory DB lookup notice: {db_err}")
+
+        # Offline/local fallback only. Production directory data above remains the source of truth.
+        if not default_team_status:
+            default_team_status = [
+                {"name": "Sarah Jenkins", "email": "sarah.j@company.com", "role": "Engineering Manager", "status": "In Office", "source": "Google Calendar", "notes": "Working core hours", "calendar_synced": bool(access_token)},
+                {"name": "Priya Nair", "email": "priya.nair@company.com", "role": "Staff Engineer (Assigned Buddy)", "status": "In Office", "source": "Google Calendar", "notes": "Available for onboarding syncs & code reviews", "calendar_synced": bool(access_token)},
+                {"name": "Amanda Walker", "email": "amanda.w@company.com", "role": "People Operations Lead", "status": "In Office", "source": "Google Calendar", "notes": "HR & Benefits", "calendar_synced": bool(access_token)},
+                {"name": "Marcus Vance", "email": "marcus.v@company.com", "role": "IT Systems Administrator", "status": "In Office", "source": "Google Calendar", "notes": "Hardware & IAM", "calendar_synced": bool(access_token)},
+            ]
 
         if not access_token:
             return {
@@ -134,6 +131,33 @@ class CalendarService:
                                     current_ooo_title = summary
                         except Exception:
                             pass
+
+                # Best-effort sync of the canonical POC calendars. If the OAuth grant does not
+                # permit FreeBusy access to another user's calendar, retain the DB directory entry
+                # and its safe default status rather than treating it as an authorization failure.
+                try:
+                    freebusy_url = "https://www.googleapis.com/calendar/v3/freeBusy"
+                    body = json.dumps({
+                        "timeMin": time_min,
+                        "timeMax": time_max,
+                        "items": [{"id": m["email"]} for m in default_team_status if m.get("email")],
+                    }).encode("utf-8")
+                    fb_req = urllib.request.Request(
+                        freebusy_url, data=body, headers={**headers, "Content-Type": "application/json"}, method="POST"
+                    )
+                    with urllib.request.urlopen(fb_req, timeout=6) as fb_resp:
+                        fb_data = json.loads(fb_resp.read().decode("utf-8"))
+                    calendars = fb_data.get("calendars", {})
+                    for member in default_team_status:
+                        cal = calendars.get(member.get("email", ""), {})
+                        errors = cal.get("errors") or []
+                        busy = cal.get("busy") or []
+                        if not errors:
+                            member["status"] = "Busy / Out of Office" if busy else "Available"
+                            member["calendar_synced"] = True
+                            member["source"] = "BigQuery employees + Google Calendar FreeBusy"
+                except Exception as fb_err:
+                    print(f"[CalendarService] POC calendar FreeBusy sync notice: {fb_err}")
 
                 return {
                     "authenticated": True,

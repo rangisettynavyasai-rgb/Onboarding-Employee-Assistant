@@ -459,6 +459,31 @@ class OnboardingService:
             "manager_id": manager.employee_id, "manager_name": manager.name, "team_name": manager.team,
             "total_team_members": len(members_progress), "overall_progress_percentage": overall_pct, "members": members_progress,
         }
+def get_all_employees_from_db() -> Dict[str, EmployeeRecord]:
+    """Return the current employee directory directly from BigQuery."""
+    result: Dict[str, EmployeeRecord] = {}
+    for row in BigQueryService.get_all_employees():
+        role_val = str(row.get("authorization_role", "employee")).lower()
+        result[str(row.get("employee_id", ""))] = EmployeeRecord(
+            employee_id=str(row.get("employee_id", "")),
+            google_subject=str(row.get("google_subject", "")),
+            email=str(row.get("email", "")),
+            name=str(row.get("name", "")),
+            department=str(row.get("department", "Engineering")),
+            team=str(row.get("team", "Unassigned")),
+            job_role=str(row.get("job_role", "Software Engineer")),
+            authorization_role=AuthorizationRole(role_val if role_val in ["employee", "manager", "hr", "it"] else "employee"),
+            manager_id=row.get("manager_id"),
+            location=str(row.get("location", "HQ")),
+            joining_date=str(row.get("joining_date", datetime.utcnow().strftime("%Y-%m-%d"))),
+            onboarding_status=str(row.get("onboarding_status", "NOT_STARTED")),
+            is_day_one=bool(row.get("is_day_one", True)),
+            assigned_buddy_name=row.get("assigned_buddy_name"),
+            assigned_buddy_email=row.get("assigned_buddy_email"),
+            onboarding_track=str(row.get("onboarding_track", "General")),
+        )
+    return result
+
 class OperationsService:
     """Operations: Timesheets, 3-Tier Escalation Directory, and Incident Creation."""
 
@@ -570,8 +595,54 @@ class OperationsService:
 
     @staticmethod
     def get_points_of_contact(employee: EmployeeRecord, access_token: Optional[str] = None) -> Dict[str, Any]:
-        manager = _EMPLOYEES.get(employee.manager_id) if employee.manager_id else None
+        # Human POCs are a shared company directory, not employee-specific hardcoded UI data.
+        # Resolve the canonical contacts from the employees table so every employee sees the
+        # same DB source of truth; Google Calendar is then used for live availability/OOO sync.
+        db_employees = {}
+        try:
+            db_employees = {e.employee_id: e for e in get_all_employees_from_db()}
+        except Exception as db_err:
+            print(f"[OperationsService] Contact directory DB lookup notice: {db_err}", file=sys.stderr)
+
+        def find_contact(*, email: str = "", job_terms: tuple = ()) -> Optional[EmployeeRecord]:
+            email_l = email.lower()
+            for e in db_employees.values():
+                if email_l and e.email.lower() == email_l:
+                    return e
+            for e in db_employees.values():
+                role_text = f"{e.job_role} {e.department} {e.team}".lower()
+                if job_terms and all(term.lower() in role_text for term in job_terms):
+                    return e
+            return None
+
+        # Stable company-wide contacts from DB. These fallbacks only cover local/offline mode.
+        buddy = find_contact(email="priya.nair@company.com", job_terms=("staff", "engineer"))
+        manager = find_contact(email="sarah.j@company.com", job_terms=("manager",))
+        it_contact = find_contact(email="marcus.v@company.com", job_terms=("it",))
+        hr_contact = find_contact(email="amanda.w@company.com", job_terms=("people",))
+
         calendar_status = CalendarService.get_out_of_office_status(access_token)
+        calendar_by_email = {
+            str(m.get("email", "")).lower(): m
+            for m in calendar_status.get("team_members", [])
+            if m.get("email")
+        }
+
+        def contact_dict(e: Optional[EmployeeRecord], fallback_name: str, fallback_email: str, role: str, scope: str, channel: str) -> Dict[str, Any]:
+            name = e.name if e else fallback_name
+            email = e.email if e else fallback_email
+            cal = calendar_by_email.get(email.lower(), {})
+            return {
+                "id": e.employee_id if e else None,
+                "name": name,
+                "email": email,
+                "role": e.job_role if e else role,
+                "scope": scope,
+                "channel": channel,
+                "status": cal.get("status", "Available"),
+                "calendar_synced": bool(cal.get("calendar_synced", calendar_status.get("synced_with_google", False))),
+                "source": "BigQuery employees + Google Calendar",
+            }
 
         domain_contacts = []
         for domain, info in TEAM_DIRECTORY.items():
@@ -584,16 +655,10 @@ class OperationsService:
 
         return {
             "employee_id": employee.employee_id, "name": employee.name, "calendar_integration": calendar_status,
-            "buddy": {
-                "name": employee.assigned_buddy_name or "Priya Nair", "email": employee.assigned_buddy_email or "priya.nair@company.com",
-                "role": "Staff Software Engineer & Tech Lead", "scope": "Day-1 Guidance & Code walkthroughs", "channel": f"#{employee.team.lower()}-dev" if employee.team else "#payments-dev",
-            },
-            "manager": {
-                "id": manager.employee_id if manager else "EMP-2026-010", "name": manager.name if manager else "Sarah Jenkins", "email": manager.email if manager else "sarah.j@company.com",
-                "role": manager.job_role if manager else "Engineering Manager", "scope": "Check-ins & Approvals", "channel": "#eng-leadership",
-            },
-            "it_support": {"name": "Marcus Vance", "email": "marcus.v@company.com", "role": "Lead IT Admin", "scope": "Hardware & IAM credentials", "channel": "#help-it"},
-            "people_ops": {"name": "Amanda Walker", "email": "amanda.w@company.com", "role": "Senior People Ops Specialist", "scope": "Benefits & Workplace Policies", "channel": "#people-ops"},
+            "buddy": contact_dict(buddy, "Priya Nair", "priya.nair@company.com", "Staff Software Engineer & Tech Lead", "Day-1 Guidance & Code walkthroughs", "#payments-dev"),
+            "manager": contact_dict(manager, "Sarah Jenkins", "sarah.j@company.com", "Engineering Manager", "Check-ins & Approvals", "#eng-leadership"),
+            "it_support": contact_dict(it_contact, "Marcus Vance", "marcus.v@company.com", "Lead IT Admin", "Hardware & IAM credentials", "#help-it"),
+            "people_ops": contact_dict(hr_contact, "Amanda Walker", "amanda.w@company.com", "Senior People Ops Specialist", "Benefits & Workplace Policies", "#people-ops"),
             "domain_escalations": domain_contacts,
         }
 class KnowledgeService:
@@ -629,7 +694,7 @@ class KnowledgeService:
 
         lines = [perimeter]
         for i, chunk in enumerate(chunks):
-            lines.append(f"--- [AUTHORIZED ASSET {i + 1} | ID: {chunk.document_id}] ---\n{chunk.content}\n")
+            lines.append(f"--- [AUTHORIZED ASSET {i + 1}] ---\n{chunk.content}\n")
         return "\n".join(lines)
 
     @staticmethod
@@ -644,7 +709,6 @@ class KnowledgeService:
             first_chunk = asset.chunks[0].content if asset.chunks else ""
             summary_text = asset.description or (first_chunk[:140] + "..." if len(first_chunk) > 140 else first_chunk)
             results.append({
-                "insight_id": f"INS-{asset.document_id}",
                 "title": asset.title,
                 "category": asset.document_type or "Runbook",
                 "summary": summary_text,
@@ -698,7 +762,8 @@ class ProactiveService:
         timesheet_info = OperationsService.get_timesheet_status(employee.employee_id)
         greeting = f"Welcome back, {employee.name}! Weekly timesheets are due Friday by 5:00 PM."
         if employee.is_day_one:
-            greeting = f"Welcome to the team, {employee.name}! Glad to have you with {employee.team} as {employee.job_role}."
+            team_phrase = f" with {employee.team}" if employee.team and employee.team.strip().lower() != "unassigned" else ""
+            greeting = f"Welcome to the team, {employee.name}! Glad to have you{team_phrase} as {employee.job_role}."
 
         return {
             "employee_id": employee.employee_id, "name": employee.name, "department": employee.department,

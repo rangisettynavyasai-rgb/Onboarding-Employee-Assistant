@@ -28,8 +28,43 @@ from google.adk.agents import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
-from datetime import timedelta
 from google.adk.apps import App
+
+
+def _sanitize_user_text(text: str) -> str:
+    """Remove internal document references and infrastructure details from user-facing text."""
+    if not text:
+        return text
+
+    sanitized = str(text)
+
+    # Never expose internal document/task IDs or raw GCS object paths.
+    sanitized = re.sub(r"\bINS-DOC-[A-Z0-9_-]+\b", "", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"\bDOC-[A-Z0-9_-]+\b", "", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"\bCHK-[A-Z0-9_-]+\b", "", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"gs://[^\s`\)\]]+", "the referenced company resource", sanitized, flags=re.IGNORECASE)
+
+    # Remove common metadata labels that could otherwise reveal internal ACL details.
+    sanitized = re.sub(r"\[?\s*Document ID\s*:\s*\s*\|?", "[", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"\|\s*Domain\s*:\s*[^|\]\n]+\|\s*Access\s*:\s*[^\]\n]+\]?", "", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"\bAsset\s*`?\s*`", "Document", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r"\bDocument ID(?:s)?\b", "document references", sanitized, flags=re.IGNORECASE)
+
+    # Tidy whitespace left by redaction without changing normal Markdown structure.
+    sanitized = re.sub(r"[ \t]{2,}", " ", sanitized)
+    sanitized = re.sub(r"\n{3,}", "\n\n", sanitized)
+    return sanitized.strip()
+
+
+def _sanitize_agent_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Return an agent result with its user-visible response sanitized."""
+    if not isinstance(result, dict):
+        return result
+    cleaned = dict(result)
+    if isinstance(cleaned.get("response"), str):
+        cleaned["response"] = _sanitize_user_text(cleaned["response"])
+    return cleaned
+
 from google.adk.apps.app import ContextCacheConfig
 
 
@@ -159,12 +194,12 @@ class KnowledgeMeshSubAgent:
                     f"No authorized internal runbooks were found matching \"{query}\" within your security clearance (`{employee.authorization_role.value if hasattr(employee.authorization_role, 'value') else employee.authorization_role}` / Team: `{employee.team}`).\n\n"
                     f"🤝 **Point to Person Connection**:\n"
                     f"When the AI Assistant doesn't have the needed answer, connect directly with our human points of contact:\n\n"
-                    f"• **Assigned Buddy**: **{buddy.get('name', 'Priya Nair')}** ({buddy.get('email', 'priya.nair@company.com')})\n"
+                    f"• **Assigned Buddy**: **{buddy.get('name') or 'Not currently assigned'}** ({buddy.get('email') or 'No email available'})\n"
                     f"  *Role*: {buddy.get('role', 'Tech Lead')} | *Scope*: {buddy.get('scope', 'Codebase walkthroughs & Day-1 guidance')}\n\n"
-                    f"• **Reporting Manager**: **{manager.get('name', 'Sarah Jenkins')}** ({manager.get('email', 'sarah.j@company.com')})\n"
+                    f"• **Reporting Manager**: **{manager.get('name') or 'Not currently assigned'}** ({manager.get('email') or 'No email available'})\n"
                     f"  *Role*: {manager.get('role', 'Engineering Manager')} | *Scope*: {manager.get('scope', 'Approvals, priorities, and 1:1 check-ins')}\n\n"
-                    f"• **IT Systems Admin**: **Marcus Vance** (marcus.v@company.com, `#help-it`)\n"
-                    f"• **People Operations (HR)**: **Amanda Walker** (amanda.w@company.com, `#people-ops`)"
+                    f"• **IT Systems Admin**: **{contacts.get('it_support', {}).get('name') or 'Not currently assigned'}** ({contacts.get('it_support', {}).get('email') or 'No email available'})\n"
+                    f"• **People Operations (HR)**: **{contacts.get('people_ops', {}).get('name') or 'Not currently assigned'}** ({contacts.get('people_ops', {}).get('email') or 'No email available'})"
                 ),
                 "suggested_actions": ["Point of Contact", "Search Runbooks", "Report IT Ticket", "View Pending Tasks"],
             }
@@ -172,14 +207,14 @@ class KnowledgeMeshSubAgent:
         # Build context from authorized chunks
         context_blocks = []
         for i, chunk in enumerate(chunks):
-            context_blocks.append(f"[Document ID: {chunk.document_id} | Domain: {chunk.team} | Access: {chunk.access_level}]\n{chunk.content}")
+            context_blocks.append(f"[Internal reference for grounding only: {chunk.document_id} | Domain: {chunk.team} | Access: {chunk.access_level}]\n{chunk.content}")
         context_str = "\n\n".join(context_blocks)
 
         system_instruction = (
             f"You are the Knowledge Mesh Sub-Agent for Company. "
             f"The user is {employee.name} (Role: {employee.job_role}, Team: {employee.team}, Clearance: {employee.authorization_role.value if hasattr(employee.authorization_role, 'value') else employee.authorization_role}). "
             f"Answer the user query strictly using the authorized corporate documents provided. "
-            f"Cite the relevant Document IDs. If details are not in the documents, state what is missing and recommend human point of contact."
+            f"Refer to supporting documents by title or topic only. Never reveal internal document IDs, chunk IDs, GCS URIs, access-control metadata, or other internal references. If details are not in the documents, state what is missing and recommend a human point of contact."
         )
         prompt = f"AUTHORIZED COMPANY DOCUMENTATION:\n{context_str}\n\nEMPLOYEE QUERY: {query}"
 
@@ -187,7 +222,7 @@ class KnowledgeMeshSubAgent:
         if ai_response:
             return {
                 "agent": "Knowledge Mesh Sub-Agent (Gemini Powered)",
-                "response": ai_response,
+                "response": _sanitize_user_text(ai_response),
                 "suggested_actions": ["Search Runbooks", "Coding Standards", "Point of Contact"],
             }
 
@@ -200,7 +235,7 @@ class KnowledgeMeshSubAgent:
         for chunk in chunks:
             if chunk.document_id not in seen_docs:
                 seen_docs.add(chunk.document_id)
-                response_lines.append(f"### 📄 Asset `{chunk.document_id}` (Domain: {chunk.team} | Access: {chunk.access_level})")
+                response_lines.append("### 📄 Authorized document")
                 response_lines.append(chunk.content.strip())
                 response_lines.append("")
 
@@ -234,7 +269,7 @@ class OnboardingSubAgent:
             if ai_response:
                 return {
                     "agent": "Onboarding Guide Sub-Agent (Gemini Powered)",
-                    "response": ai_response,
+                    "response": _sanitize_user_text(ai_response),
                     "suggested_actions": ["View My Tasks", "Point of Contact", "Company Policies"],
                 }
 
@@ -265,7 +300,7 @@ class OnboardingSubAgent:
                 "agent": "Onboarding Guide Sub-Agent",
                 "response": (
                     f"🎥 **Onboarding Video Orientation & Deep Dive**\n\n"
-                    f"Asset URI: `gs://patchamomma-505416-employee-ai-knowledge/videos/onboarding/{employee.onboarding_track.lower()}_deepdive.mp4`\n\n"
+                    f"The onboarding deep-dive video is available through the company onboarding resources.\n\n"
                     f"⏱️ **Essential Timestamp Markers**:\n"
                     f"• **Minute 04:15**: Local Development Environment, GCP Credentials & Git Hooks setup.\n"
                     f"• **Minute 18:45**: Cloud SQL Auth Proxy Sidecar & Workload Identity connectivity."
@@ -298,7 +333,7 @@ class OnboardingSubAgent:
         if ai_response:
             return {
                 "agent": "Onboarding Guide Sub-Agent (Gemini Powered)",
-                "response": ai_response,
+                "response": _sanitize_user_text(ai_response),
                 "suggested_actions": ["Complete Next Task", "Connect with Buddy", "View Runbooks"],
             }
 
@@ -350,22 +385,22 @@ class PointToPersonSubAgent:
         if ai_response:
             return {
                 "agent": "Point to Person Sub-Agent (Gemini Powered)",
-                "response": ai_response,
+                "response": _sanitize_user_text(ai_response),
                 "suggested_actions": ["Point of Contact", "Connect with Buddy", "Report IT Ticket", "View Pending Tasks"],
             }
 
         lines = [
             f"🤝 **Point to Person Connection: Direct Human Support for {employee.name}**\n",
             "When the AI Assistant cannot provide the exact answer you need, connect directly with these team leaders:\n",
-            f"1. **Assigned Onboarding Buddy**: **{buddy.get('name', 'Priya Nair')}** ({buddy.get('email', 'priya.nair@company.com')})",
+            f"1. **Assigned Onboarding Buddy**: **{buddy.get('name') or 'Not currently assigned'}** ({buddy.get('email') or 'No email available'})",
             f"   • *Role*: {buddy.get('role', 'Tech Lead')} | *Slack*: `{buddy.get('channel', '#payments-dev')}`",
             f"   • *Scope*: {buddy.get('scope', 'Codebase walkthroughs & Day-1 guidance')}\n",
-            f"2. **Direct Reporting Manager**: **{manager.get('name', 'Sarah Jenkins')}** ({manager.get('email', 'sarah.j@company.com')})",
+            f"2. **Direct Reporting Manager**: **{manager.get('name') or 'Not currently assigned'}** ({manager.get('email') or 'No email available'})",
             f"   • *Role*: {manager.get('role', 'Engineering Manager')} | *Slack*: `{manager.get('channel', '#eng-leadership')}`",
             f"   • *Scope*: {manager.get('scope', 'Check-ins & Approvals')}\n",
-            f"3. **IT Systems & IAM Admin**: **{it_supp.get('name', 'Marcus Vance')}** ({it_supp.get('email', 'marcus.v@company.com')}, `{it_supp.get('channel', '#help-it')}`)",
+            f"3. **IT Systems & IAM Admin**: **{it_supp.get('name') or 'Not currently assigned'}** ({it_supp.get('email') or 'No email available'}, `{it_supp.get('channel') or 'No channel available'}`)",
             f"   • *Scope*: {it_supp.get('scope', 'Hardware & IAM credentials')}\n",
-            f"4. **People Operations (HR)**: **{hr_supp.get('name', 'Amanda Walker')}** ({hr_supp.get('email', 'amanda.w@company.com')}, `{hr_supp.get('channel', '#people-ops')}`)",
+            f"4. **People Operations (HR)**: **{hr_supp.get('name') or 'Not currently assigned'}** ({hr_supp.get('email') or 'No email available'}, `{hr_supp.get('channel') or 'No channel available'}`)",
             f"   • *Scope*: {hr_supp.get('scope', 'Benefits & Workplace Policies')}\n",
             "🚨 **Technical Escalation Leads (with Automated Out-of-Office Routing)**:"
         ]
@@ -397,7 +432,7 @@ class CodeMentorSubAgent:
         if ai_response:
             return {
                 "agent": "Code Mentor Sub-Agent (Gemini Powered)",
-                "response": ai_response,
+                "response": _sanitize_user_text(ai_response),
                 "suggested_actions": ["Search Runbooks", "View Pending Tasks", "Check Timesheet"],
             }
 
@@ -439,7 +474,7 @@ class OpsPolicySubAgent:
             if ai_response:
                 return {
                     "agent": "Operations & HR Policy Sub-Agent (Gemini Powered)",
-                    "response": ai_response,
+                    "response": _sanitize_user_text(ai_response),
                     "suggested_actions": ["Timesheet Status", "Coding Standards", "View Pending Tasks"],
                 }
 
@@ -487,7 +522,7 @@ class OpsPolicySubAgent:
         if ai_response:
             return {
                 "agent": "Operations & HR Policy Sub-Agent (Gemini Powered)",
-                "response": ai_response,
+                "response": _sanitize_user_text(ai_response),
                 "suggested_actions": ["Check Timesheet Status", "Report IT Ticket", "Search Runbooks"],
             }
 
@@ -526,7 +561,7 @@ class LiveADKAgentSystem:
             root_agent=self.root_agent,
             context_cache_config=ContextCacheConfig(
                 min_tokens=1024,
-                ttl=timedelta(minutes=30),
+                ttl_seconds=1800,
                 cache_intervals=5,
             ),
         )
@@ -583,7 +618,7 @@ class LiveADKAgentSystem:
             Use the existing operations service agent for live HR, IT, policy,
             timesheet, payroll, and escalation requests.
             """
-            result = OperationsSubAgent.handle(employee, query)
+            result = OpsPolicySubAgent.handle(employee, query)
             return json.dumps(result, default=str)
 
         knowledge_agent = Agent(
@@ -596,7 +631,7 @@ You are the Knowledge Mesh specialist.
 Instructions:
 - Always call search_authorized_knowledge for company-specific questions.
 - Use only the documents returned by that tool.
-- Cite document_id values in the answer.
+- Refer to documents by title or topic only. Never reveal document_id, chunk IDs, GCS URIs, or access-control metadata.
 - Never bypass authorization or infer restricted information.
 - If no documents are returned, say that no authorized documentation was found.
 - Recommend a human point of contact when the answer is unavailable.
@@ -695,7 +730,7 @@ Supervisor instructions:
 7. Ask one short clarification question if the request is ambiguous.
 8. Answer directly first, then provide concise supporting details.
 9. Use clean Markdown with short headings and bullets.
-10. Cite document IDs for knowledge answers.
+10. Refer to knowledge sources by document title or topic only; never reveal document IDs, chunk IDs, GCS URIs, or access-control metadata.
 11. End with a practical next step where appropriate.
 12. Do not expose API keys, credentials, tokens, or unrelated personal data.
 
@@ -770,7 +805,7 @@ class SupervisorAgent:
 
             return {
                 "agent": "Live ADK Supervisor",
-                "response": response,
+                "response": _sanitize_user_text(response),
                 "suggested_actions": [
                     "Search Runbooks",
                     "View Pending Tasks",

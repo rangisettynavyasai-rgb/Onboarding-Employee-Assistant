@@ -390,7 +390,7 @@
           <span class="read-doc-badge">\u{1F4D6} Read Doc \u2192</span>
         </div>
       `;
-        const docTarget = item.doc_id || item.document_id || item.insight_id || item.title;
+        const docTarget = item.title;
         card.addEventListener("click", () => {
           openDocumentModal(docTarget);
         });
@@ -553,10 +553,7 @@
     if (!modal) return;
     const contentEl = document.getElementById("doc-modal-content");
     const titleEl = document.getElementById("doc-modal-title");
-    const uriEl = document.getElementById("doc-modal-uri");
     const typeBadge = document.getElementById("doc-modal-type-badge");
-    const idBadge = document.getElementById("doc-modal-id-badge");
-    const clearanceBadge = document.getElementById("doc-modal-clearance-badge");
     if (contentEl) contentEl.innerHTML = "<div style='text-align: center; padding: 30px 0; color: var(--text-muted);'>Loading document from Knowledge Mesh...</div>";
     if (titleEl) titleEl.textContent = "Loading Document...";
     modal.style.display = "grid";
@@ -568,16 +565,10 @@
         if (contentEl) contentEl.innerHTML = `<div style="padding: 24px; color: var(--accent-rose); background: rgba(244,63,94,0.1); border-radius: 6px;">${doc.error}</div>`;
         return;
       }
-      if (titleEl) titleEl.textContent = doc.title || docId;
-      if (uriEl) uriEl.textContent = doc.gcs_uri || `gs://company-knowledge-mesh/${doc.document_id}.md`;
+      if (titleEl) titleEl.textContent = doc.title;
       if (typeBadge) {
         typeBadge.textContent = (doc.category || "GUIDE").toUpperCase();
         typeBadge.className = `mesh-category-pill cat-${(doc.category || "STANDARDS").toUpperCase()}`;
-      }
-      if (idBadge) idBadge.textContent = doc.document_id || docId;
-      if (clearanceBadge) {
-        clearanceBadge.textContent = (doc.access_level || "employee").toUpperCase();
-        clearanceBadge.className = `role-tag role-${(doc.access_level || "employee").toLowerCase()}`;
       }
       const sourceBadge = document.getElementById("doc-modal-source-badge");
       if (sourceBadge) {
@@ -625,9 +616,8 @@
   function askAboutCurrentDocument() {
     if (!currentActiveDocument) return;
     const docTitle = currentActiveDocument.title;
-    const docId = currentActiveDocument.document_id;
     closeDocumentModal();
-    quickPrompt(`Tell me more about the standards and procedures in ${docTitle} (${docId})`);
+    quickPrompt(`Tell me more about the standards and procedures in ${docTitle}.`);
   }
   async function openTimesheetModal() {
     const modal = document.getElementById("timesheet-modal");
@@ -736,7 +726,7 @@
       return;
     }
     const filtered = cachedRunbooks.filter((doc) => {
-      return doc.title && doc.title.toLowerCase().includes(q) || doc.document_id && doc.document_id.toLowerCase().includes(q) || doc.category && doc.category.toLowerCase().includes(q) || doc.team && doc.team.toLowerCase().includes(q) || doc.description && doc.description.toLowerCase().includes(q);
+      return doc.title && doc.title.toLowerCase().includes(q) || doc.category && doc.category.toLowerCase().includes(q) || doc.team && doc.team.toLowerCase().includes(q) || doc.description && doc.description.toLowerCase().includes(q);
     });
     renderRunbooksList(filtered);
   }
@@ -755,10 +745,6 @@
       <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
         <div style="display: flex; gap: 6px; align-items: center;">
           <span class="mesh-category-pill cat-${(doc.category || "STANDARDS").toUpperCase()}">${doc.category || "DOC"}</span>
-          <span style="font-family: monospace; font-size: 10px; color: var(--text-muted);">${doc.document_id}</span>
-        </div>
-        <span class="role-tag role-${(doc.access_level || "employee").toLowerCase()}">${doc.access_level}</span>
-      </div>
       <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${doc.title}</div>
       <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 8px;">
         ${doc.description || (doc.full_content ? doc.full_content.slice(0, 160) + "..." : "")}
@@ -768,10 +754,6 @@
         <span class="read-doc-badge">Read Full Document \u2192</span>
       </div>
     `;
-      card.onclick = () => {
-        closeRunbooksModal();
-        openDocumentModal(doc.document_id);
-      };
       container.appendChild(card);
     });
   }
@@ -852,7 +834,7 @@
       return;
     }
     if (txt === "Coding Standards") {
-      openDocumentModal("DOC-ALL-002");
+      quickPrompt("What are the corporate coding standards?");
       return;
     }
     const input = document.getElementById("user-input-box");

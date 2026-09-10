@@ -1256,12 +1256,10 @@
         <div>
           <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
             <span id="doc-modal-type-badge" class="mesh-category-pill cat-STANDARDS">STANDARDS</span>
-            <span id="doc-modal-id-badge" class="doc-meta-badge">DOC-ID</span>
             <span id="doc-modal-clearance-badge" class="role-tag role-employee">Employee</span>
             <span id="doc-modal-source-badge" class="mesh-category-pill" style="background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3);">☁ Google Cloud Storage</span>
           </div>
           <h2 id="doc-modal-title" style="font-size: 18px; margin: 0; color: var(--text-primary);">Document Title</h2>
-          <div id="doc-modal-uri" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: monospace;">gs://...</div>
         </div>
         <button class="modal-close-btn" onclick="closeDocumentModal()" aria-label="Close">✕</button>
       </div>
@@ -1269,7 +1267,6 @@
         Loading document content...
       </div>
       <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 14px; margin-top: 8px;">
-        <button id="doc-copy-uri-btn" class="btn-secondary" onclick="copyDocumentUri()">📋 Copy Asset URI</button>
         <div style="display: flex; gap: 10px;">
           <button class="btn-secondary" onclick="closeDocumentModal()">Close</button>
           <button id="doc-ask-ai-btn" class="btn-send" onclick="askAboutCurrentDocument()">💬 Ask Assistant</button>
