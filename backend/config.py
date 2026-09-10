@@ -67,6 +67,7 @@ def get_config_val(key: str, default: Any = None) -> Any:
         "JIRA_PROJECT_KEY": jira.get("projectKey"),
         "JIRA_EMAIL": jira.get("email"),
         "SALESFORCE_INSTANCE_URL": sf.get("instanceUrl"),
+        "SALESFORCE_CLIENT_ID": sf.get("clientId"),
     }
 
     val = key_map.get(key)

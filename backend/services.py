@@ -526,10 +526,11 @@ class OperationsService:
         sf_res = SalesforceService.sync_timesheet(employee_id=employee_id, employee_name=emp_name, hours=hours, notes=notes)
         salesforce_id = sf_res.get("salesforce_id", "")
         state_store.save_timesheet_submission(employee_id, hours, notes, salesforce_id)
-        result = OperationsService.get_timesheet_status(employee_id)
+        result = SalesforceService.get_status()
         result["salesforce_sync"] = sf_res
         result["salesforce_id"] = salesforce_id
         result["salesforce_url"] = sf_res.get("salesforce_url", "")
+        print(result)
         return result
 
     @staticmethod
@@ -694,7 +695,7 @@ class KnowledgeService:
 
         lines = [perimeter]
         for i, chunk in enumerate(chunks):
-            lines.append(f"--- [AUTHORIZED ASSET {i + 1}] ---\n{chunk.content}\n")
+            lines.append(f"--- [AUTHORIZED ASSET {i + 1} ---\n{chunk.content}\n")
         return "\n".join(lines)
 
     @staticmethod

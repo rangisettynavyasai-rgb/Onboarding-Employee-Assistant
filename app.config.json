@@ -10,11 +10,11 @@
   "googleOAuthClientId": "874836211421-q56rjcminj3kr9fviretuu8ndfp9krtm.apps.googleusercontent.com",
   "jira": {
     "host": "https://onboarding-employee-assistant.atlassian.net",
-    "projectKey": "IGEKRFOI-1",
+    "projectKey": "KAN",
     "email": "rangisettynavyasai@gmail.com"
   },
   "salesforce": {
-    "instanceUrl": "https://onboardingemployeeassistant-dev-ed.develop.my.salesforce.com",
+    "instanceUrl": "https://orgfarm-dcf268d969-dev-ed.develop.my.salesforce.com",
     "clientId": "3MVG9JJwBBbcN47JT15oMTPL7ovBol2zzmaNQrcBw9xjyRa9ZqAfY2Maa9OGGmjgH4mHZiENxxB7C10Iz6MQ2"
   },
   "secrets": {

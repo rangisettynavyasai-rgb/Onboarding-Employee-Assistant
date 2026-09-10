@@ -660,15 +660,15 @@
       const result = await apiRequest("/api/v1/timesheets/submit", "POST", { hours, notes });
       if (feedback) {
         feedback.style.color = "var(--accent-emerald)";
-        feedback.textContent = `\u2713 Timesheet submitted successfully! (${result.hours_logged} hours logged).`;
+        feedback.textContent = `\u2713 Timesheet submitted successfully!`;
       }
       const statusPill = document.getElementById("ts-modal-status-pill");
       if (statusPill) {
         statusPill.textContent = "SUBMITTED";
         statusPill.className = "status-pill-submitted";
       }
-      const sf = result.salesforce_sync;
-      const sfLabel = sf?.mode === "PRODUCTION_LIVE" ? `Live Salesforce CRM synced (${sf.salesforce_id})` : `Staged in Cloud Firestore (${sf?.reference_id || "02i8X00000123AA"})`;
+      const sf = result;
+      const sfLabel = sf?.mode === "PRODUCTION_LIVE" ? `Live Salesforce CRM synced` : `Staged in Cloud Firestore `;
       appendChatMessage(
         "assistant",
         `\u23F1\uFE0F **Timesheet Submitted**: Logged **${hours} hours** for this pay period.
@@ -1203,7 +1203,7 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
       const jiraLabel = jiraInfo?.mode === "PRODUCTION_LIVE" ? `Live Jira Cloud Synced (${jiraInfo.issue_key})` : `Staged in Cloud Firestore (${jiraInfo?.issue_key || inc.incident_id})`;
       appendChatMessage(
         "assistant",
-        `\u{1F6A8} **Incident Ticket Generated**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}** (${inc.lead_contact}).
+        `\u{1F6A8} **Incident Ticket Generated**: Ticket **${inc.incident_id}** assigned to **${inc.assigned_team}**.
 
 \u2022 **Sync State**: ${jiraLabel}
 \u2022 **Summary**: ${inc.summary}`,
