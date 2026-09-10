@@ -133,3 +133,14 @@ CREATE OR REPLACE TABLE `patchamomma-505416.employee_ai.agent_telemetry_friction
     blocker_severity STRING,
     metadata_json STRING
 );
+
+-- ----------------------------------------------------------------------------
+-- Table 9: Employee ID Sequence
+-- ----------------------------------------------------------------------------
+-- The application uses this row as an atomic allocator for EMP-YYYY-NNN IDs.
+-- It avoids MAX(employee_id)+1 races across horizontally scaled Cloud Run instances.
+CREATE TABLE IF NOT EXISTS `patchamomma-505416.employee_ai.employee_id_sequences` (
+    sequence_name STRING NOT NULL,
+    id_year INT64 NOT NULL,
+    next_sequence INT64 NOT NULL
+);

@@ -54,8 +54,16 @@ def main():
             email = payload.get("email", "")
             name = payload.get("name", "")
             sub = payload.get("sub", "")
-            picture = payload.get("picture", "")
-            emp = AuthService.register_google_profile(email, name, sub, picture)
+            emp = AuthService.register_google_profile(email, name, sub)
+            print(json.dumps(emp.to_dict()))
+            return
+
+        if action == "signup":
+            email = payload.get("email", "")
+            name = payload.get("name", "")
+            password = payload.get("password", "")
+            track = payload.get("onboarding_track", "General")
+            emp = AuthService.signup_employee(email=email, name=name, password=password, onboarding_track=track)
             print(json.dumps(emp.to_dict()))
             return
 

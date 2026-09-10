@@ -3,6 +3,8 @@
 Company AI Assistant: Enterprise Domain Services (Python)
 Unified operation lifecycle service definitions.
 """
+import os
+import re
 import json
 import base64
 import time
@@ -57,6 +59,39 @@ MOCK_TOKEN_MAP: Dict[str, str] = {
     "mock-google-token-elena": "EMP-2026-007", "mock-google-token-marcus": "EMP-2026-008",
     "mock-google-token-amanda": "EMP-2026-009", "mock-google-token-sarah": "EMP-2026-010"
 }
+def format_clean_name(name: Optional[str], email: str) -> str:
+    if name and not (name.startswith("eyJ") or name.startswith("ya29.") or (len(name) > 35 and " " not in name)):
+        return name.strip()
+    if email and "@" in email:
+        local_part = email.split("@")[0]
+        cleaned = re.sub(r"[._+\-]+", " ", local_part).title()
+        return cleaned.strip()
+    return "New Employee"
+
+def create_default_tasks_for_employee(employee_id: str, joining_date: str = "2026-09-10", track: str = "General") -> List[OnboardingTask]:
+    suffix = employee_id.split("-")[-1] if "-" in employee_id else employee_id[-3:]
+    task_templates = [
+        ("SEC", "Complete Corporate Security & Data Privacy Training", "Review corporate security policies, configure 2FA, and complete mandatory data privacy certification.", 1, "Security & Compliance", "https://learning.internal.company.com/courses/sec-2026"),
+        ("ENV", "Configure Local Development Environment & Cloud Credentials", "Install and configure gcloud CLI, Docker, and establish workstation authentication.", 2, "Development Setup", "gs://patchamomma-505416-employee-ai-knowledge/runbooks/kubernetes_cluster_triage.md"),
+        ("BUDDY", "Schedule Introductory 1:1 with Onboarding Buddy", "Connect with your assigned mentor for workspace orientation and team introduction.", 3, "Team Integration", None),
+        ("REPO", "Clone Team Repositories & Review Architecture Blueprint", "Access project repositories and review core microservice architecture guidelines.", 5, "First Milestone", "https://github.com/company/payments-core"),
+        ("TS", "Review Timesheet Workflow & Payroll Schedule", "Verify timesheet portal access and understand Friday 5:00 PM submission deadline.", 7, "Operations", None),
+    ]
+    tasks = []
+    for code, title, desc, due_days, cat, link in task_templates:
+        task = OnboardingTask(
+            task_id=f"TASK-{suffix}-{code}",
+            title=title,
+            description=desc,
+            status=TaskStatus.PENDING,
+            due_days_after_start=due_days,
+            category=cat,
+            action_link=link
+        )
+        task.calculate_due(joining_date)
+        tasks.append(task)
+    return tasks
+
 class AuthService:
     """Enterprise Identity & Token Resolution Service."""
 
@@ -64,6 +99,10 @@ class AuthService:
     def authenticate_credentials(identity: str, password: Optional[str] = None) -> Optional[EmployeeRecord]:
         emp = AuthService.resolve_employee(identity)
         if not emp:
+            # If domain is open (* allowed) and not found, auto-provision user
+            clean_id = identity.strip().lower()
+            if "@" in clean_id:
+                return AuthService.signup_employee(email=clean_id, name="")
             return None
         return emp
 
@@ -73,66 +112,172 @@ class AuthService:
             return None
         clean_token = bearer_token_or_id.replace("Bearer ", "").strip() if bearer_token_or_id.lower().startswith("bearer ") else bearer_token_or_id.strip()
 
-        # CRITICAL SDK FIX: Extract the dictionary safely from the returned BigQuery Row list
+        # 1. Check BigQuery
         try:
             bq_res = BigQueryService.get_employee(clean_token)
             if bq_res and isinstance(bq_res, list) and len(bq_res) > 0:
                 bq_emp = bq_res[0]
-                role_val = bq_emp.get("authorization_role", "employee").lower()
+                role_val = str(bq_emp.get("authorization_role", "employee")).lower()
+                clean_name = format_clean_name(bq_emp.get("name"), bq_emp.get("email", ""))
                 return EmployeeRecord(
-                    employee_id=bq_emp.get("employee_id", clean_token), google_subject=bq_emp.get("google_subject", ""),
-                    email=bq_emp.get("email", ""), name=bq_emp.get("name", ""), department=bq_emp.get("department", "Engineering"),
-                    team=bq_emp.get("team", "Payments"), job_role=bq_emp.get("job_role", "Software Engineer"),
+                    employee_id=bq_emp.get("employee_id", clean_token),
+                    google_subject=bq_emp.get("google_subject", ""),
+                    email=bq_emp.get("email", ""),
+                    name=clean_name,
+                    department=bq_emp.get("department", "Engineering"),
+                    team=bq_emp.get("team", "Unassigned"),
+                    job_role=bq_emp.get("job_role", "Software Engineer"),
                     authorization_role=AuthorizationRole(role_val if role_val in ["employee", "manager", "hr", "it"] else "employee"),
-                    manager_id=bq_emp.get("manager_id"), location=bq_emp.get("location", "HQ"), joining_date=str(bq_emp.get("joining_date", "2026-09-01")),
-                    onboarding_status=bq_emp.get("onboarding_status", "IN_PROGRESS"), is_day_one=bool(bq_emp.get("is_day_one", False)),
-                    assigned_buddy_name=bq_emp.get("assigned_buddy_name"), assigned_buddy_email=bq_emp.get("assigned_buddy_email"), onboarding_track=bq_emp.get("onboarding_track", "Backend")
+                    manager_id=bq_emp.get("manager_id"),
+                    location=bq_emp.get("location", "HQ"),
+                    joining_date=str(bq_emp.get("joining_date", datetime.utcnow().strftime("%Y-%m-%d"))),
+                    onboarding_status=bq_emp.get("onboarding_status", "NOT_STARTED"),
+                    is_day_one=bool(bq_emp.get("is_day_one", True)),
+                    assigned_buddy_name=bq_emp.get("assigned_buddy_name"),
+                    assigned_buddy_email=bq_emp.get("assigned_buddy_email"),
+                    onboarding_track=bq_emp.get("onboarding_track", "General")
                 )
         except Exception as bq_err:
             print(f"[AuthService] BigQuery lookup notice: {bq_err}", file=sys.stderr)
 
+        # 2. Check Firestore
         try:
             fs_emp = firestore_db.get_employee(clean_token)
             if fs_emp:
-                role_val = fs_emp.get("authorization_role", "employee").lower()
+                role_val = str(fs_emp.get("authorization_role", "employee")).lower()
+                clean_name = format_clean_name(fs_emp.get("name"), fs_emp.get("email", ""))
                 return EmployeeRecord(
-                    employee_id=fs_emp.get("employee_id", clean_token), google_subject=fs_emp.get("google_subject", ""),
-                    email=fs_emp.get("email", ""), name=fs_emp.get("name", ""), department=fs_emp.get("department", "Engineering"),
-                    team=fs_emp.get("team", "Payments"), job_role=fs_emp.get("job_role", "Software Engineer"),
+                    employee_id=fs_emp.get("employee_id", clean_token),
+                    google_subject=fs_emp.get("google_subject", ""),
+                    email=fs_emp.get("email", ""),
+                    name=clean_name,
+                    department=fs_emp.get("department", "Engineering"),
+                    team=fs_emp.get("team", "Unassigned"),
+                    job_role=fs_emp.get("job_role", "Software Engineer"),
                     authorization_role=AuthorizationRole(role_val if role_val in ["employee", "manager", "hr", "it"] else "employee"),
-                    manager_id=fs_emp.get("manager_id"), location=fs_emp.get("location", "HQ"), joining_date=str(fs_emp.get("joining_date", "2026-09-01")),
-                    onboarding_status=fs_emp.get("onboarding_status", "IN_PROGRESS"), is_day_one=bool(fs_emp.get("is_day_one", False)),
-                    assigned_buddy_name=fs_emp.get("assigned_buddy_name"), assigned_buddy_email=fs_emp.get("assigned_buddy_email"), onboarding_track=fs_emp.get("onboarding_track", "Backend")
+                    manager_id=fs_emp.get("manager_id"),
+                    location=fs_emp.get("location", "HQ"),
+                    joining_date=str(fs_emp.get("joining_date", datetime.utcnow().strftime("%Y-%m-%d"))),
+                    onboarding_status=fs_emp.get("onboarding_status", "NOT_STARTED"),
+                    is_day_one=bool(fs_emp.get("is_day_one", True)),
+                    assigned_buddy_name=fs_emp.get("assigned_buddy_name"),
+                    assigned_buddy_email=fs_emp.get("assigned_buddy_email"),
+                    onboarding_track=fs_emp.get("onboarding_track", "General")
                 )
         except Exception as fs_err:
             print(f"[AuthService] Firestore lookup notice: {fs_err}", file=sys.stderr)
 
+        # 3. Check Mock Map
         if clean_token in MOCK_TOKEN_MAP:
             return _EMPLOYEES.get(MOCK_TOKEN_MAP[clean_token])
 
+        # 4. Check in-memory store
         for emp in _EMPLOYEES.values():
             if emp.google_subject == clean_token or emp.employee_id == clean_token or emp.email.lower() == clean_token.lower():
                 return emp
+
         return None
 
     @staticmethod
-    def register_google_profile(email: str, name: str, sub: str = "") -> EmployeeRecord:
+    def signup_employee(
+        email: str,
+        name: str = "",
+        password: Optional[str] = "",
+        department: str = "Engineering",
+        team: str = "Unassigned",
+        job_role: str = "Software Engineer",
+        onboarding_track: str = "General"
+    ) -> EmployeeRecord:
+        """
+        Signs up a new employee with sequential BigQuery ID (EMP-YYYY-NNN),
+        unassigned team, and 0% onboarding status with fresh tasks.
+        """
         email_clean = email.strip().lower()
+        clean_name = format_clean_name(name, email_clean)
 
-        # CRITICAL SDK FIX: Unpack list safely from official BigQuery Client rows
+        # Check if user already exists
+        existing = AuthService.resolve_employee(email_clean)
+        if existing:
+            if clean_name and (existing.name == "New Employee" or existing.name.startswith("eyJ") or existing.name.startswith("ya29.")):
+                existing.name = clean_name
+            return existing
+
+        # Allocate incremental ID from BigQuery sequence (e.g. EMP-2026-011)
+        new_id = BigQueryService.allocate_next_employee_id()
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+        new_emp = EmployeeRecord(
+            employee_id=new_id,
+            google_subject=f"sub-{new_id.lower()}",
+            email=email_clean,
+            name=clean_name,
+            department=department or "Engineering",
+            team=team or "Unassigned",
+            job_role=job_role or "Software Engineer",
+            authorization_role=AuthorizationRole.EMPLOYEE,
+            manager_id=None,
+            location="HQ",
+            joining_date=today_str,
+            onboarding_status="NOT_STARTED",
+            is_day_one=True,
+            assigned_buddy_name=None,
+            assigned_buddy_email=None,
+            onboarding_track=onboarding_track or "General"
+        )
+
+        # Persist new employee to BigQuery
+        try:
+            BigQueryService.create_employee(new_emp.to_dict())
+        except Exception as bq_err:
+            print(f"[AuthService] BigQuery create_employee notice: {bq_err}", file=sys.stderr)
+
+        # Generate fresh initial tasks (status: PENDING -> 0% progress)
+        tasks = create_default_tasks_for_employee(new_id, today_str, new_emp.onboarding_track)
+        try:
+            BigQueryService.create_employee_tasks(new_id, [t.to_dict() for t in tasks])
+        except Exception as bq_task_err:
+            print(f"[AuthService] BigQuery create_employee_tasks notice: {bq_task_err}", file=sys.stderr)
+
+        _EMPLOYEES[new_id] = new_emp
+        _CHECKLISTS[new_id] = tasks
+        firestore_db.save_employee(new_emp.to_dict())
+
+        return new_emp
+
+    @staticmethod
+    def register_google_profile(email: str, name: str, sub: str = "") -> EmployeeRecord:
+        """
+        Authenticates or provisions a Google profile with clean name, incremental ID,
+        and unassigned team.
+        """
+        email_clean = email.strip().lower()
+        clean_name = format_clean_name(name, email_clean)
+
+        # 1. Try BigQuery lookup
         try:
             bq_res = BigQueryService.get_employee(email_clean)
             if bq_res and isinstance(bq_res, list) and len(bq_res) > 0:
                 bq_emp = bq_res[0]
-                role_val = bq_emp.get("authorization_role", "employee").lower()
+                role_val = str(bq_emp.get("authorization_role", "employee")).lower()
+                existing_name = bq_emp.get("name")
+                resolved_name = clean_name if (clean_name and clean_name != "New Employee") else format_clean_name(existing_name, email_clean)
                 emp = EmployeeRecord(
-                    employee_id=bq_emp.get("employee_id", "EMP-2026-001"), google_subject=sub or bq_emp.get("google_subject", ""),
-                    email=email_clean, name=name or bq_emp.get("name", "Employee"), department=bq_emp.get("department", "Engineering"),
-                    team=bq_emp.get("team", "Payments"), job_role=bq_emp.get("job_role", "Software Engineer"),
+                    employee_id=bq_emp.get("employee_id", "EMP-2026-001"),
+                    google_subject=sub or bq_emp.get("google_subject", ""),
+                    email=email_clean,
+                    name=resolved_name,
+                    department=bq_emp.get("department", "Engineering"),
+                    team=bq_emp.get("team", "Unassigned"),
+                    job_role=bq_emp.get("job_role", "Software Engineer"),
                     authorization_role=AuthorizationRole(role_val if role_val in ["employee", "manager", "hr", "it"] else "employee"),
-                    manager_id=bq_emp.get("manager_id"), location=bq_emp.get("location", "HQ"), joining_date=str(bq_emp.get("joining_date", "2026-09-01")),
-                    onboarding_status=bq_emp.get("onboarding_status", "IN_PROGRESS"), is_day_one=bool(bq_emp.get("is_day_one", False)),
-                    assigned_buddy_name=bq_emp.get("assigned_buddy_name", "Priya Nair"), assigned_buddy_email=bq_emp.get("assigned_buddy_email", "priya.nair@company.com"), onboarding_track=bq_emp.get("onboarding_track", "Backend")
+                    manager_id=bq_emp.get("manager_id"),
+                    location=bq_emp.get("location", "HQ"),
+                    joining_date=str(bq_emp.get("joining_date", datetime.utcnow().strftime("%Y-%m-%d"))),
+                    onboarding_status=bq_emp.get("onboarding_status", "NOT_STARTED"),
+                    is_day_one=bool(bq_emp.get("is_day_one", True)),
+                    assigned_buddy_name=bq_emp.get("assigned_buddy_name"),
+                    assigned_buddy_email=bq_emp.get("assigned_buddy_email"),
+                    onboarding_track=bq_emp.get("onboarding_track", "General")
                 )
                 _EMPLOYEES[emp.employee_id] = emp
                 firestore_db.save_employee(emp.to_dict())
@@ -140,22 +285,53 @@ class AuthService:
         except Exception as bq_err:
             print(f"[AuthService] BigQuery lookup notice in register_google_profile: {bq_err}", file=sys.stderr)
 
+        # 2. Try in-memory lookup
         for emp in _EMPLOYEES.values():
             if emp.email.lower() == email_clean or (sub and emp.google_subject == sub):
-                if name: emp.name = name
+                if clean_name and (emp.name == "New Employee" or emp.name.startswith("eyJ") or emp.name.startswith("ya29.")):
+                    emp.name = clean_name
                 firestore_db.save_employee(emp.to_dict())
                 return emp
 
-        new_id = f"EMP-{str(int(time.time()))[-6:]}"
+        # 3. Auto-provision new employee with incremental ID (e.g. EMP-2026-011)
+        new_id = BigQueryService.allocate_next_employee_id()
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
         new_emp = EmployeeRecord(
-            employee_id=new_id, google_subject=sub or f"sub-{email_clean}", email=email_clean, name=name or email_clean.split("@")[0].title(),
-            department="Engineering", team="Payments", job_role="Software Engineer", authorization_role=AuthorizationRole.EMPLOYEE,
-            manager_id="EMP-2026-010", location="HQ", joining_date=datetime.now().strftime("%Y-%m-%d"), onboarding_status="IN_PROGRESS",
-            is_day_one=False, assigned_buddy_name="Priya Nair", assigned_buddy_email="priya.nair@company.com", onboarding_track="Backend"
+            employee_id=new_id,
+            google_subject=sub or f"google-sub-{new_id.lower()}",
+            email=email_clean,
+            name=clean_name,
+            department="Engineering",
+            team="Unassigned",
+            job_role="Software Engineer",
+            authorization_role=AuthorizationRole.EMPLOYEE,
+            manager_id=None,
+            location="HQ",
+            joining_date=today_str,
+            onboarding_status="NOT_STARTED",
+            is_day_one=True,
+            assigned_buddy_name=None,
+            assigned_buddy_email=None,
+            onboarding_track="General"
         )
+
+        try:
+            BigQueryService.create_employee(new_emp.to_dict())
+        except Exception as bq_err:
+            print(f"[AuthService] BigQuery create_employee notice: {bq_err}", file=sys.stderr)
+
+        tasks = create_default_tasks_for_employee(new_id, today_str, new_emp.onboarding_track)
+        try:
+            BigQueryService.create_employee_tasks(new_id, [t.to_dict() for t in tasks])
+        except Exception as bq_task_err:
+            print(f"[AuthService] BigQuery create_employee_tasks notice: {bq_task_err}", file=sys.stderr)
+
         _EMPLOYEES[new_id] = new_emp
+        _CHECKLISTS[new_id] = tasks
         firestore_db.save_employee(new_emp.to_dict())
         return new_emp
+
 class OnboardingService:
     """Onboarding Lifecycle, Tasks & Manager Team Rollup Service."""
 
@@ -164,17 +340,44 @@ class OnboardingService:
         tasks = _CHECKLISTS.get(employee_id)
         if not tasks:
             emp = _EMPLOYEES.get(employee_id)
-            join_date = emp.joining_date if emp else "2026-09-01"
-            tasks = []
-            for t in _CHECKLISTS.get("EMP-2026-001", []):
-                task_copy = OnboardingTask(
-                    task_id=t.task_id, title=t.title, description=t.description, status=t.status,
-                    due_days_after_start=t.due_days_after_start, due_date=t.due_date,
-                    is_overdue=t.is_overdue, completed_at=t.completed_at, category=t.category, action_link=t.action_link
-                )
-                task_copy.calculate_due(join_date)
-                tasks.append(task_copy)
-            _CHECKLISTS[employee_id] = tasks
+            join_date = emp.joining_date if emp else datetime.utcnow().strftime("%Y-%m-%d")
+            track = emp.onboarding_track if emp else "General"
+
+            # Check BigQuery for existing tasks
+            bq_tasks_raw = []
+            try:
+                bq_tasks_raw = BigQueryService.get_employee_tasks(employee_id)
+            except Exception:
+                pass
+
+            if bq_tasks_raw:
+                tasks = []
+                for r in bq_tasks_raw:
+                    stat_str = str(r.get("status", "PENDING")).upper()
+                    try:
+                        task_stat = TaskStatus(stat_str)
+                    except ValueError:
+                        task_stat = TaskStatus.PENDING
+                    t = OnboardingTask(
+                        task_id=str(r.get("task_id", "")),
+                        title=str(r.get("title", "")),
+                        description=str(r.get("description", "")),
+                        status=task_stat,
+                        due_days_after_start=int(r.get("due_days_after_start", 1) or 1),
+                        completed_at=str(r.get("completed_at", "")) if r.get("completed_at") else None,
+                        category=str(r.get("category", "General")),
+                        action_link=r.get("action_link")
+                    )
+                    t.calculate_due(join_date)
+                    tasks.append(t)
+                _CHECKLISTS[employee_id] = tasks
+            else:
+                tasks = create_default_tasks_for_employee(employee_id, join_date, track)
+                _CHECKLISTS[employee_id] = tasks
+                try:
+                    BigQueryService.create_employee_tasks(employee_id, [t.to_dict() for t in tasks])
+                except Exception:
+                    pass
 
         completed_ids = list(state_store.get_completed_task_ids(employee_id))
         try:

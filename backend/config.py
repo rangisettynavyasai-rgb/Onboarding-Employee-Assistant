@@ -92,6 +92,29 @@ def get_secret_ids() -> Dict[str, str]:
 def get_secret_id(env_var: str) -> Optional[str]:
     return get_secret_ids().get(env_var)
 
+_SECRET_CLIENT = None
+_SECRET_CLIENT_ATTEMPTED = False
+_SECRET_CLIENT_AVAILABLE = False
+
+def get_secret_client() -> Optional[secretmanager.SecretManagerServiceClient]:
+    global _SECRET_CLIENT, _SECRET_CLIENT_ATTEMPTED, _SECRET_CLIENT_AVAILABLE
+    if _SECRET_CLIENT is not None:
+        return _SECRET_CLIENT
+    if _SECRET_CLIENT_ATTEMPTED and not _SECRET_CLIENT_AVAILABLE:
+        return None
+
+    _SECRET_CLIENT_ATTEMPTED = True
+    try:
+        import google.auth
+        credentials, _ = google.auth.default()
+        _SECRET_CLIENT = secretmanager.SecretManagerServiceClient(credentials=credentials)
+        _SECRET_CLIENT_AVAILABLE = True
+        return _SECRET_CLIENT
+    except Exception as e:
+        _SECRET_CLIENT_AVAILABLE = False
+        print(f"[Config] Secret Manager credentials notice: {e}", file=sys.stderr)
+        return None
+
 def get_secret(env_var: str, default: Optional[str] = None) -> Optional[str]:
     """
     Retrieves secret value:
@@ -107,13 +130,13 @@ def get_secret(env_var: str, default: Optional[str] = None) -> Optional[str]:
     if not secret_id:
         return default
 
+    client = get_secret_client()
+    if not client:
+        return default
+
     project_id = get_config_val("GCP_PROJECT_ID", "patchamomma-505416")
     try:
-        # Initialize native Secret Manager client context
-        client = secretmanager.SecretManagerServiceClient()
         name = f"projects/{project_id}/secrets/{secret_id}/versions/latest"
-        
-        # Access the secret version payload natively
         response = client.access_secret_version(request={"name": name})
         secret_val = response.payload.data.decode("utf-8")
         

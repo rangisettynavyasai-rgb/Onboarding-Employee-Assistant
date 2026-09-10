@@ -48,40 +48,111 @@
     const googleLabel = document.getElementById("btn-google-sso-label");
     const loginBtn = document.getElementById("btn-employee-login");
     const loginLabel = document.getElementById("btn-employee-login-label");
+    const signupBtn = document.getElementById("btn-employee-signup");
+    const signupLabel = document.getElementById("btn-employee-signup-label");
+
     if (isLoading) {
-      if (googleBtn) {
-        googleBtn.disabled = true;
-        googleBtn.style.opacity = "0.7";
-        googleBtn.style.cursor = "wait";
+      if (googleBtn) { googleBtn.disabled = true; googleBtn.style.opacity = "0.7"; googleBtn.style.cursor = "wait"; }
+      if (googleLabel) { googleLabel.innerHTML = `<span class="auth-spinner" style="margin-right: 6px;"></span> ${actionLabel || "Authenticating..."}`; }
+      if (loginBtn) { loginBtn.disabled = true; loginBtn.style.opacity = "0.7"; loginBtn.style.cursor = "wait"; }
+      if (loginLabel) { loginLabel.textContent = "Verifying..."; }
+      if (signupBtn) { signupBtn.disabled = true; signupBtn.style.opacity = "0.7"; signupBtn.style.cursor = "wait"; }
+      if (signupLabel) { signupLabel.textContent = "Creating Account..."; }
+    } else {
+      if (googleBtn) { googleBtn.disabled = false; googleBtn.style.opacity = "1"; googleBtn.style.cursor = "pointer"; }
+      if (googleLabel) { googleLabel.textContent = "Continue with Google"; }
+      if (loginBtn) { loginBtn.disabled = false; loginBtn.style.opacity = "1"; loginBtn.style.cursor = "pointer"; }
+      if (loginLabel) { loginLabel.textContent = "Sign In"; }
+      if (signupBtn) { signupBtn.disabled = false; signupBtn.style.opacity = "1"; signupBtn.style.cursor = "pointer"; }
+      if (signupLabel) { signupLabel.textContent = "Create Account & Sign In"; }
+    }
+  }
+
+  function toggleAuthMode(mode) {
+    const signinContainer = document.getElementById("auth-signin-container");
+    const signupContainer = document.getElementById("auth-signup-container");
+    const signinTab = document.getElementById("tab-btn-signin");
+    const signupTab = document.getElementById("tab-btn-signup");
+    dismissAuthAlert();
+
+    if (mode === "signup") {
+      if (signinContainer) signinContainer.style.display = "none";
+      if (signupContainer) signupContainer.style.display = "block";
+      if (signinTab) {
+        signinTab.classList.remove("active");
+        signinTab.setAttribute("aria-selected", "false");
       }
-      if (googleLabel) {
-        googleLabel.innerHTML = `<span class="auth-spinner" style="margin-right: 6px;"></span> ${actionLabel || "Authenticating..."}`;
-      }
-      if (loginBtn) {
-        loginBtn.disabled = true;
-        loginBtn.style.opacity = "0.7";
-        loginBtn.style.cursor = "wait";
-      }
-      if (loginLabel) {
-        loginLabel.textContent = "Verifying...";
+      if (signupTab) {
+        signupTab.classList.add("active");
+        signupTab.setAttribute("aria-selected", "true");
       }
     } else {
-      if (googleBtn) {
-        googleBtn.disabled = false;
-        googleBtn.style.opacity = "1";
-        googleBtn.style.cursor = "pointer";
+      if (signinContainer) signinContainer.style.display = "block";
+      if (signupContainer) signupContainer.style.display = "none";
+      if (signinTab) {
+        signinTab.classList.add("active");
+        signinTab.setAttribute("aria-selected", "true");
       }
-      if (googleLabel) {
-        googleLabel.textContent = "Continue with Google";
+      if (signupTab) {
+        signupTab.classList.remove("active");
+        signupTab.setAttribute("aria-selected", "false");
       }
-      if (loginBtn) {
-        loginBtn.disabled = false;
-        loginBtn.style.opacity = "1";
-        loginBtn.style.cursor = "pointer";
+    }
+  }
+
+  async function handleEmployeeSignUp(event) {
+    event.preventDefault();
+    dismissAuthAlert();
+    const nameInput = document.getElementById("signup-name-input");
+    const emailInput = document.getElementById("signup-email-input");
+    const passwordInput = document.getElementById("signup-password-input");
+    const trackSelect = document.getElementById("signup-track-select");
+
+    const name = nameInput?.value.trim() || "";
+    const email = emailInput?.value.trim().toLowerCase() || "";
+    const password = passwordInput?.value.trim() || "";
+    const onboarding_track = trackSelect?.value || "General";
+
+    if (!name) {
+      showAuthAlert("Name Required", "Please enter your full name.", "warning");
+      return;
+    }
+    if (!email || !email.includes("@")) {
+      showAuthAlert("Valid Email Required", "Please enter a valid corporate email address.", "warning");
+      return;
+    }
+    if (!password || password.length < 6) {
+      showAuthAlert("Password Required", "Please enter a password with at least 6 characters.", "warning");
+      return;
+    }
+
+    setAuthLoading(true, "Creating Account...");
+    setAuthStatus("Provisioning new employee profile in BigQuery...");
+
+    try {
+      const res = await fetch("/api/v1/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          onboarding_track,
+          team: "Unassigned",
+          department: "Engineering",
+          job_role: "Software Engineer"
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.token) {
+        throw new Error(data.detail || "Sign up failed.");
       }
-      if (loginLabel) {
-        loginLabel.textContent = "Sign In";
-      }
+      await initializeSession(data.token);
+    } catch (err) {
+      showAuthAlert("Sign-Up Error", err.message || "Failed to create account.", "error");
+      setAuthStatus("Sign-up failed: " + err.message, true);
+    } finally {
+      setAuthLoading(false);
     }
   }
   function setAuthStatus(msg, isError = false) {
@@ -109,27 +180,75 @@
     }
     return data;
   }
-  async function initializeSession(token, isRestoring = false) {
+  function cleanDisplayName(name, email) {
+    if (name && !name.startsWith("eyJ") && !name.startsWith("ya29.") && (name.includes(" ") || name.length <= 25)) {
+      return name.trim();
+    }
+    if (email && email.includes("@")) {
+      const local = email.split("@")[0];
+      return local.replace(/[._\-+]+/g, " ").replace(/\b\w/g, c => c.toUpperCase()).trim();
+    }
+    return "Team Member";
+  }
+
+  async function initializeSession(authParam, isRestoring = false) {
     dismissAuthAlert();
     setAuthLoading(true, isRestoring ? "Restoring Session..." : "Authenticating...");
     try {
-      let effectiveToken = token;
-      if (token.startsWith("ya29.") || token.startsWith("eyJ") || token.includes("@")) {
-        setAuthStatus("Verifying Google Workspace identity with corporate directory...");
+      let effectiveToken = null;
+
+      if (typeof authParam === "object" && authParam !== null) {
+        setAuthStatus("Authenticating Google Identity with enterprise directory...");
         const authRes = await fetch("/api/v1/auth/google", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential: token, email: token.includes("@") ? token : void 0 })
+          body: JSON.stringify(authParam)
         });
         const authData = await authRes.json();
         if (!authRes.ok || !authData.token) {
           throw new Error(authData.detail || "Google Identity authentication failed");
         }
         effectiveToken = authData.token;
+      } else if (typeof authParam === "string") {
+        const tokenStr = authParam.trim();
+        if (tokenStr.startsWith("ya29.") || tokenStr.startsWith("eyJ") || tokenStr.includes("@")) {
+          setAuthStatus("Verifying identity with corporate directory...");
+          let parsedName = "";
+          let parsedEmail = tokenStr.includes("@") ? tokenStr : "";
+          if (tokenStr.startsWith("eyJ") && tokenStr.split(".").length === 3) {
+            try {
+              const b64 = tokenStr.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+              const claims = JSON.parse(decodeURIComponent(atob(b64).split("").map(c => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join("")));
+              if (claims.email) parsedEmail = claims.email;
+              if (claims.name) parsedName = claims.name;
+              else if (claims.given_name) parsedName = `${claims.given_name} ${claims.family_name || ""}`.trim();
+            } catch (_) {}
+          }
+          const authRes = await fetch("/api/v1/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ credential: tokenStr, email: parsedEmail || void 0, name: parsedName || void 0 })
+          });
+          const authData = await authRes.json();
+          if (!authRes.ok || !authData.token) {
+            throw new Error(authData.detail || "Corporate identity verification failed");
+          }
+          effectiveToken = authData.token;
+        } else {
+          effectiveToken = tokenStr;
+        }
       }
+
+      if (!effectiveToken) {
+        throw new Error("No valid authorization token received.");
+      }
+
       state.activeBearerToken = effectiveToken;
       setAuthStatus("Loading personalized workspace...");
       const landing = await apiRequest("/api/v1/landing", "POST");
+      
+      // Clean display name if token string leaked into name
+      landing.name = cleanDisplayName(landing.name, landing.email || "");
       state.currentUserProfile = landing;
       sessionStorage.setItem(AUTH_TOKEN_KEY, effectiveToken);
       const sessionKey = `onboarding_session_${landing.employee_id}`;
@@ -144,8 +263,8 @@
       if (teamEl) teamEl.textContent = `${landing.team} \u2022 ${landing.department}`;
       const roleEl = document.getElementById("user-display-role");
       if (roleEl) {
-        roleEl.textContent = landing.authorization_role.toUpperCase();
-        roleEl.className = `role-tag role-${landing.authorization_role.toLowerCase()}`;
+        roleEl.textContent = (landing.authorization_role || "EMPLOYEE").toUpperCase();
+        roleEl.className = `role-tag role-${(landing.authorization_role || "employee").toLowerCase()}`;
       }
       $("proactive-greeting-text").textContent = landing.proactive_greeting;
       const stream = document.getElementById("chat-stream");
@@ -1135,9 +1254,9 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
             client_id: clientId,
             scope: "openid email profile",
             callback: async (tokenResponse) => {
-              setAuthLoading(false);
               if (tokenResponse?.error) {
                 console.warn("Google OAuth popup error:", tokenResponse);
+                setAuthLoading(false);
                 showAuthAlert(
                   "Google Sign-In Notice",
                   "Google sign-in popup was dismissed. You can sign in using your corporate email below.",
@@ -1146,8 +1265,27 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
                 return;
               }
               if (tokenResponse?.access_token) {
-                setAuthStatus("Google account authorized, completing session initialization...");
-                initializeSession(tokenResponse.access_token);
+                setAuthStatus("Google account authorized, fetching user profile...");
+                let profileName = "";
+                let profileEmail = "";
+                let profileSub = "";
+                try {
+                  const uRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                  });
+                  if (uRes.ok) {
+                    const uData = await uRes.json();
+                    profileEmail = uData.email || "";
+                    profileName = uData.name || uData.given_name || "";
+                    profileSub = uData.sub || "";
+                  }
+                } catch (_) {}
+                initializeSession({
+                  credential: tokenResponse.access_token,
+                  email: profileEmail,
+                  name: profileName,
+                  sub: profileSub
+                });
               }
             },
             error_callback: (err) => {
@@ -1164,7 +1302,22 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
           client_id: clientId,
           callback: (response) => {
             if (response?.credential) {
-              initializeSession(response.credential);
+              let parsedEmail = "";
+              let parsedName = "";
+              let parsedSub = "";
+              try {
+                const b64 = response.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+                const claims = JSON.parse(decodeURIComponent(atob(b64).split("").map(c => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join("")));
+                parsedEmail = claims.email || "";
+                parsedName = claims.name || claims.given_name || "";
+                parsedSub = claims.sub || "";
+              } catch (_) {}
+              initializeSession({
+                credential: response.credential,
+                email: parsedEmail,
+                name: parsedName,
+                sub: parsedSub
+              });
             } else {
               showAuthAlert("Google Auth Error", "No credential token received from Google Identity.", "error");
             }
@@ -1356,8 +1509,10 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
     closeIncidentModal,
     submitIncident,
     togglePersonaHelper,
+    toggleAuthMode,
     handleGoogleSignInClick,
     handleEmployeeSignIn,
+    handleEmployeeSignUp,
     signInWithMockToken,
     loadPersonasFromDb,
     signOut,

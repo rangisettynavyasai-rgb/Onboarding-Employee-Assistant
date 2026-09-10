@@ -70,3 +70,11 @@ VALUES
 ('Cloud SQL', 'David Miller', 'david.miller@company.com', TRUE, 'Priya Nair', 'priya.nair@company.com', FALSE, '#database-support-general'),
 ('IAM & Security', 'Elena Rostova', 'elena.r@company.com', TRUE, 'Marcus Vance', 'marcus.v@company.com', TRUE, '#secops-emergency-triage'),
 ('Data Pipelines', 'Sofia Patel', 'sofia.patel@company.com', FALSE, 'Jordan Lee', 'jordan.lee@company.com', TRUE, '#data-engineering-help');
+
+-- 7. Seed Employee ID Sequence
+-- Seed data contains EMP-2026-001 through EMP-2026-010, so the next allocated
+-- employee ID is EMP-2026-011.
+INSERT INTO `patchamomma-505416.employee_ai.employee_id_sequences`
+(sequence_name, id_year, next_sequence)
+VALUES
+('employee', 2026, 11);

@@ -38,19 +38,50 @@ class BigQueryService:
     def get_dataset(cls) -> str:
         return get_config_val("BIGQUERY_DATASET", "employee_ai")
 
+    _LOCAL_SEQUENCE = 11
+    _client = None
+    _client_attempted = False
+    _client_available = False
+
+    @classmethod
+    def get_client(cls) -> Optional[bigquery.Client]:
+        if cls._client is not None:
+            return cls._client
+        if cls._client_attempted and not cls._client_available:
+            return None
+
+        cls._client_attempted = True
+        try:
+            import google.auth
+            credentials, _ = google.auth.default()
+            cls._client = bigquery.Client(project=cls.get_project_id(), credentials=credentials)
+            cls._client_available = True
+            return cls._client
+        except Exception as e:
+            cls._client_available = False
+            print(f"[BigQueryService] Local/Cloud ADC resolution notice: {e}", file=sys.stderr)
+            return None
+
     @classmethod
     def execute_query(cls, sql: str) -> Dict[str, Any]:
         """
         Executes a SQL statement via the official BigQuery Client SDK directly.
         All production data is queried from and mutated in Cloud BigQuery.
         """
-        project_id = cls.get_project_id()
+        client = cls.get_client()
+        if not client:
+            return {
+                "success": False,
+                "error": "BigQuery client credentials unavailable (using fallback)",
+                "rows": [],
+                "total_rows": 0,
+                "job_complete": False,
+                "engine": "cloud_bigquery"
+            }
 
         try:
-            # Native client automatically inherits Cloud Run Service Account context
-            client = bigquery.Client(project=project_id)
             query_job = client.query(sql)
-            results = query_job.result()  # Waits for query to complete
+            results = query_job.result(timeout=4.0)  # Safe timeout for query execution
 
             # Parse rows into lists of plain dict objects
             parsed_rows = [dict(row) for row in results]
@@ -64,7 +95,7 @@ class BigQueryService:
                 "engine": "cloud_bigquery"
             }
         except Exception as e:
-            print(f"[BigQueryService] BigQuery query execution error: {str(e)}", file=sys.stderr)
+            print(f"[BigQueryService] BigQuery query execution notice: {str(e)}", file=sys.stderr)
             return {
                 "success": False,
                 "error": str(e),
@@ -104,6 +135,114 @@ class BigQueryService:
         if res.get("success"):
             return res.get("rows", [])
         return []
+
+    @classmethod
+    def allocate_next_employee_id(cls, year: int = 2026) -> str:
+        """
+        Allocates the next incremental employee ID (e.g. EMP-2026-011) using the
+        employee_id_sequences table or table MAX() fallback.
+        """
+        project = cls.get_project_id()
+        dataset = cls.get_dataset()
+        next_seq = None
+
+        # 1. Try to read from employee_id_sequences in BigQuery
+        try:
+            seq_sql = f"SELECT next_sequence FROM `{project}.{dataset}.employee_id_sequences` WHERE sequence_name = 'employee' AND id_year = {year} LIMIT 1"
+            res = cls.execute_query(seq_sql)
+            if res.get("success") and res.get("rows"):
+                next_seq = int(res["rows"][0]["next_sequence"])
+                # Increment the sequence in BigQuery
+                update_sql = f"UPDATE `{project}.{dataset}.employee_id_sequences` SET next_sequence = {next_seq + 1} WHERE sequence_name = 'employee' AND id_year = {year}"
+                cls.execute_query(update_sql)
+        except Exception as e:
+            print(f"[BigQueryService] Sequence query notice: {e}", file=sys.stderr)
+
+        # 2. Fallback: inspect max employee_id in employees table
+        if next_seq is None:
+            try:
+                max_sql = f"SELECT employee_id FROM `{project}.{dataset}.employees` WHERE employee_id LIKE 'EMP-{year}-%' ORDER BY employee_id DESC LIMIT 1"
+                res = cls.execute_query(max_sql)
+                if res.get("success") and res.get("rows"):
+                    last_id = str(res["rows"][0]["employee_id"])
+                    match = re.search(r"EMP-\d{4}-(\d+)", last_id)
+                    if match:
+                        next_seq = int(match.group(1)) + 1
+            except Exception as e:
+                print(f"[BigQueryService] Max ID query notice: {e}", file=sys.stderr)
+
+        # 3. Memory sequence fallback (auto-increments locally)
+        if next_seq is None or next_seq < 1:
+            next_seq = cls._LOCAL_SEQUENCE
+            cls._LOCAL_SEQUENCE += 1
+        else:
+            if next_seq >= cls._LOCAL_SEQUENCE:
+                cls._LOCAL_SEQUENCE = next_seq + 1
+
+        return f"EMP-{year}-{next_seq:03d}"
+
+    @classmethod
+    def create_employee(cls, emp_dict: Dict[str, Any]) -> bool:
+        """
+        Inserts a new employee record into BigQuery table `employees`.
+        """
+        emp_id = str(emp_dict.get("employee_id", "")).replace("'", "\\'")
+        google_sub = str(emp_dict.get("google_subject", "")).replace("'", "\\'")
+        email = str(emp_dict.get("email", "")).replace("'", "\\'")
+        name = str(emp_dict.get("name", "")).replace("'", "\\'")
+        department = str(emp_dict.get("department", "Engineering")).replace("'", "\\'")
+        team = str(emp_dict.get("team", "Unassigned")).replace("'", "\\'")
+        job_role = str(emp_dict.get("job_role", "Software Engineer")).replace("'", "\\'")
+        auth_role = str(emp_dict.get("authorization_role", "employee")).replace("'", "\\'")
+        manager_id = f"'{str(emp_dict.get('manager_id')).replace('\'', '\\\'')}'" if emp_dict.get("manager_id") else "NULL"
+        location = str(emp_dict.get("location", "HQ")).replace("'", "\\'")
+        joining_date = str(emp_dict.get("joining_date", datetime.utcnow().strftime("%Y-%m-%d"))).replace("'", "\\'")
+        onboarding_status = str(emp_dict.get("onboarding_status", "NOT_STARTED")).replace("'", "\\'")
+        is_day_one = "TRUE" if emp_dict.get("is_day_one", True) else "FALSE"
+        buddy_name = f"'{str(emp_dict.get('assigned_buddy_name')).replace('\'', '\\\'')}'" if emp_dict.get("assigned_buddy_name") else "NULL"
+        buddy_email = f"'{str(emp_dict.get('assigned_buddy_email')).replace('\'', '\\\'')}'" if emp_dict.get("assigned_buddy_email") else "NULL"
+        track = str(emp_dict.get("onboarding_track", "General")).replace("'", "\\'")
+
+        project = cls.get_project_id()
+        dataset = cls.get_dataset()
+        sql = (
+            f"INSERT INTO `{project}.{dataset}.employees` "
+            f"(employee_id, google_subject, email, name, department, team, job_role, authorization_role, manager_id, location, joining_date, onboarding_status, is_day_one, assigned_buddy_name, assigned_buddy_email, onboarding_track) "
+            f"VALUES ('{emp_id}', '{google_sub}', '{email}', '{name}', '{department}', '{team}', '{job_role}', '{auth_role}', {manager_id}, '{location}', DATE('{joining_date}'), '{onboarding_status}', {is_day_one}, {buddy_name}, {buddy_email}, '{track}')"
+        )
+        res = cls.execute_query(sql)
+        return bool(res.get("success"))
+
+    @classmethod
+    def create_employee_tasks(cls, employee_id: str, tasks: List[Dict[str, Any]]) -> bool:
+        """
+        Inserts initial onboarding tasks for an employee into `employee_onboarding_tasks`.
+        """
+        if not tasks:
+            return True
+        project = cls.get_project_id()
+        dataset = cls.get_dataset()
+        value_rows = []
+        for t in tasks:
+            task_id = str(t.get("task_id", "")).replace("'", "\\'")
+            clean_emp = employee_id.replace("'", "\\'")
+            title = str(t.get("title", "")).replace("'", "\\'")
+            desc = str(t.get("description", "")).replace("'", "\\'")
+            status = str(t.get("status", "PENDING")).replace("'", "\\'")
+            due_days = int(t.get("due_days_after_start", 1) or 1)
+            completed_at = f"TIMESTAMP('{t.get('completed_at')}')" if t.get("completed_at") else "NULL"
+            cat = str(t.get("category", "General")).replace("'", "\\'")
+            action_link = f"'{str(t.get('action_link')).replace('\'', '\\\'')}'" if t.get("action_link") else "NULL"
+            value_rows.append(f"('{task_id}', '{clean_emp}', '{title}', '{desc}', '{status}', {due_days}, {completed_at}, '{cat}', {action_link})")
+        
+        sql = (
+            f"INSERT INTO `{project}.{dataset}.employee_onboarding_tasks` "
+            f"(task_id, employee_id, title, description, status, due_days_after_start, completed_at, category, action_link) "
+            f"VALUES {', '.join(value_rows)}"
+        )
+        res = cls.execute_query(sql)
+        return bool(res.get("success"))
+
     @classmethod
     def update_employee_status(cls, employee_id: str, status: str) -> bool:
         """

@@ -26,15 +26,30 @@ class FirestoreManager:
         self.project_id = get_config_val("GCP_PROJECT_ID", "patchamomma-505416")
         self.database_id = get_config_val("FIRESTORE_DATABASE_ID", "onboarding-employee-assistant-firestore-database")
         self._client: Optional[firestore.Client] = None
+        self._attempted: bool = False
+        self._available: bool = False
 
-    def _get_client(self) -> firestore.Client:
+    def _get_client(self) -> Optional[firestore.Client]:
         """
         Natively instantiates the official Firestore Client.
         Automatically inherits service account credentials or Application Default Credentials (ADC).
         """
-        if self._client is None:
-            self._client = firestore.Client(project=self.project_id, database=self.database_id)
-        return self._client
+        if self._client is not None:
+            return self._client
+        if self._attempted and not self._available:
+            return None
+
+        self._attempted = True
+        try:
+            import google.auth
+            credentials, _ = google.auth.default()
+            self._client = firestore.Client(project=self.project_id, database=self.database_id, credentials=credentials)
+            self._available = True
+            return self._client
+        except Exception as e:
+            self._available = False
+            print(f"[Firestore] Firestore client init notice: {e}", file=sys.stderr)
+            return None
 
     def test_connection(self) -> Dict[str, Any]:
         """
@@ -48,8 +63,12 @@ class FirestoreManager:
             "status": "Checking..."
         }
 
+        db = self._get_client()
+        if not db:
+            result["status"] = "Firestore Client unavailable"
+            return result
+
         try:
-            db = self._get_client()
             chk_docs = list(db.collection("checklists").limit(1).stream())
             sess_docs = list(db.collection("sessions").limit(1).stream())
             
@@ -68,6 +87,10 @@ class FirestoreManager:
         """
         Saves chat history and metadata directly to Cloud Firestore collection 'sessions'.
         """
+        db = self._get_client()
+        if not db:
+            return False
+
         doc_data = {
             "session_id": session_id,
             "employee_id": employee_id,
@@ -76,7 +99,6 @@ class FirestoreManager:
         }
 
         try:
-            db = self._get_client()
             doc_ref = db.collection("sessions").document(session_id)
             doc_ref.set(doc_data, merge=True)
             return True
@@ -88,8 +110,10 @@ class FirestoreManager:
         """
         Retrieves chat history and session data directly from Cloud Firestore collection 'sessions'.
         """
+        db = self._get_client()
+        if not db:
+            return None
         try:
-            db = self._get_client()
             doc = db.collection("sessions").document(session_id).get()
             if doc.exists:
                 data = doc.to_dict() or {}
@@ -106,8 +130,10 @@ class FirestoreManager:
         """
         Retrieves completed onboarding task IDs directly from Cloud Firestore collection 'checklists'.
         """
+        db = self._get_client()
+        if not db:
+            return []
         try:
-            db = self._get_client()
             doc = db.collection("checklists").document(employee_id).get()
             if doc.exists:
                 data = doc.to_dict() or {}
@@ -121,12 +147,14 @@ class FirestoreManager:
         """
         Adds a completed task ID to Cloud Firestore collection 'checklists/{employee_id}'.
         """
+        db = self._get_client()
+        if not db:
+            return
         try:
             current_tasks = self.get_completed_tasks(employee_id)
             if task_id not in current_tasks:
                 current_tasks.append(task_id)
 
-            db = self._get_client()
             doc_ref = db.collection("checklists").document(employee_id)
             doc_data = {
                 "employee_id": employee_id,
@@ -158,8 +186,11 @@ class FirestoreManager:
             "submitted_at": now
         }
 
+        db = self._get_client()
+        if not db:
+            return {**doc_data, "submitted_at": now.isoformat() + "Z"}
+
         try:
-            db = self._get_client()
             db.collection("timesheets").document(employee_id).set(doc_data, merge=True)
         except Exception as e:
             print(f"[Firestore] save_timesheet error: {e}", file=sys.stderr)
@@ -173,8 +204,10 @@ class FirestoreManager:
         """
         Retrieves timesheet directly from Cloud Firestore collection 'timesheets'.
         """
+        db = self._get_client()
+        if not db:
+            return None
         try:
-            db = self._get_client()
             doc = db.collection("timesheets").document(employee_id).get()
             if doc.exists:
                 data = doc.to_dict() or {}
@@ -191,6 +224,10 @@ class FirestoreManager:
         """
         Saves an incident ticket directly to Cloud Firestore collection 'incidents'.
         """
+        db = self._get_client()
+        if not db:
+            return
+
         inc_id = incident.get("incident_id") or f"inc_{int(datetime.utcnow().timestamp() * 1000)}"
         incident["incident_id"] = inc_id
         if "created_at" not in incident:
@@ -203,7 +240,6 @@ class FirestoreManager:
                 incident["created_at"] = datetime.utcnow()
 
         try:
-            db = self._get_client()
             db.collection("incidents").document(inc_id).set(incident, merge=True)
         except Exception as e:
             print(f"[Firestore] add_incident error: {e}", file=sys.stderr)
@@ -212,9 +248,11 @@ class FirestoreManager:
         """
         Retrieves all incident tickets directly from Cloud Firestore collection 'incidents'.
         """
+        db = self._get_client()
+        if not db:
+            return []
         result = []
         try:
-            db = self._get_client()
             docs = db.collection("incidents").order_by("created_at", direction=firestore.Query.DESCENDING).stream()
             for doc in docs:
                 data = doc.to_dict() or {}
@@ -231,6 +269,10 @@ class FirestoreManager:
         """
         Saves or updates employee profile directly in Cloud Firestore collection 'employees'.
         """
+        db = self._get_client()
+        if not db:
+            return
+
         emp_id = employee_data.get("employee_id")
         if not emp_id:
             return
@@ -250,7 +292,6 @@ class FirestoreManager:
         }
 
         try:
-            db = self._get_client()
             db.collection("employees").document(clean_id).set(store_fields, merge=True)
         except Exception as e:
             print(f"[Firestore] save_employee error: {e}", file=sys.stderr)
@@ -259,10 +300,13 @@ class FirestoreManager:
         """
         Retrieves employee profile directly from Cloud Firestore collection 'employees'.
         """
+        db = self._get_client()
+        if not db:
+            return None
+
         clean_id = employee_id.replace(" ", "_").replace("@", "_").replace(".", "_")
 
         try:
-            db = self._get_client()
             doc = db.collection("employees").document(clean_id).get()
             if doc.exists:
                 data = doc.to_dict() or {}
@@ -280,10 +324,13 @@ class FirestoreManager:
         """
         if not email:
             return None
+        db = self._get_client()
+        if not db:
+            return None
+
         clean_email = email.strip().lower()
 
         try:
-            db = self._get_client()
             docs = db.collection("employees").where(filter=firestore.FieldFilter("email", "==", clean_email)).limit(1).stream()
             for doc in docs:
                 data = doc.to_dict() or {}

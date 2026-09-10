@@ -97,6 +97,37 @@
     }
     .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
 
+    /* Sign In / Sign Up Tab Toggle */
+    .auth-tab-bar {
+      display: flex;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      margin-bottom: 20px;
+      gap: 4px;
+    }
+    .auth-tab-btn {
+      flex: 1;
+      padding: 9px 14px;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .auth-tab-btn:hover {
+      color: var(--text-primary);
+    }
+    .auth-tab-btn.active {
+      background: var(--accent-indigo);
+      color: #FFFFFF;
+      box-shadow: 0 2px 10px rgba(99, 102, 241, 0.4);
+    }
+
     /* Google SSO Button */
     .btn-google {
       display: inline-flex;
@@ -886,50 +917,139 @@
       <!-- Container for Google Identity Services Iframe (when active) -->
       <div id="google-button" style="display: none; justify-content: center; margin-top: 10px;"></div>
 
-      <div class="divider">or sign in with corporate credentials</div>
+      <!-- Sign In vs Sign Up Segmented Tabs -->
+      <div class="auth-tab-bar" role="tablist">
+        <button id="tab-btn-signin" type="button" class="auth-tab-btn active" onclick="toggleAuthMode('signin')" role="tab" aria-selected="true">Sign In</button>
+        <button id="tab-btn-signup" type="button" class="auth-tab-btn" onclick="toggleAuthMode('signup')" role="tab" aria-selected="false">Sign Up (New User)</button>
+      </div>
 
-      <!-- Standard Corporate Sign-In Form -->
-      <form id="employee-login-form" onsubmit="handleEmployeeSignIn(event)" style="display: flex; flex-direction: column; gap: 14px; text-align: left; margin-bottom: 16px;">
-        <div>
-          <label for="login-identity-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
-            Work Email or Employee ID
-          </label>
-          <input 
-            id="login-identity-input" 
-            type="text" 
-            class="form-control" 
-            placeholder="e.g. rangisettynavyasai@gmail.com or EMP-2026-001" 
-            required 
-            autocomplete="username"
-            style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
-          />
+      <!-- 1A. Corporate Sign-In Form -->
+      <div id="auth-signin-container">
+        <form id="employee-login-form" onsubmit="handleEmployeeSignIn(event)" style="display: flex; flex-direction: column; gap: 14px; text-align: left; margin-bottom: 14px;">
+          <div>
+            <label for="login-identity-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+              Work Email or Employee ID
+            </label>
+            <input 
+              id="login-identity-input" 
+              type="text" 
+              class="form-control" 
+              placeholder="e.g. rahul.sharma@company.com or EMP-2026-001" 
+              required 
+              autocomplete="username"
+              style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
+            />
+          </div>
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label for="login-password-input" style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0;">
+                Password
+              </label>
+              <span style="font-size: 11px; color: var(--text-muted);">Demo: password123</span>
+            </div>
+            <input 
+              id="login-password-input" 
+              type="password" 
+              class="form-control" 
+              placeholder="Enter your password" 
+              required
+              autocomplete="current-password"
+              style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
+            />
+          </div>
+          <button 
+            id="btn-employee-login" 
+            type="submit" 
+            class="btn-send" 
+            style="width: 100%; justify-content: center; padding: 12px; font-size: 14px; margin-top: 4px;"
+          >
+            <span id="btn-employee-login-label">Sign In</span>
+          </button>
+        </form>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; text-align: center;">
+          New team member? 
+          <a href="javascript:void(0)" onclick="toggleAuthMode('signup')" style="color: var(--accent-indigo); font-weight: 600; text-decoration: none; margin-left: 4px;">
+            Sign Up below &rarr;
+          </a>
         </div>
-        <div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <label for="login-password-input" style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 0;">
+      </div>
+
+      <!-- 1B. Corporate Sign-Up Form (For New Users) -->
+      <div id="auth-signup-container" style="display: none;">
+        <form id="employee-signup-form" onsubmit="handleEmployeeSignUp(event)" style="display: flex; flex-direction: column; gap: 14px; text-align: left; margin-bottom: 14px;">
+          <div>
+            <label for="signup-name-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+              Full Name
+            </label>
+            <input 
+              id="signup-name-input" 
+              type="text" 
+              class="form-control" 
+              placeholder="e.g. Navyasai Rangisetty" 
+              required 
+              autocomplete="name"
+              style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
+            />
+          </div>
+          <div>
+            <label for="signup-email-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+              Corporate / Work Email
+            </label>
+            <input 
+              id="signup-email-input" 
+              type="email" 
+              class="form-control" 
+              placeholder="e.g. navyasai@company.com" 
+              required 
+              autocomplete="email"
+              style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
+            />
+          </div>
+          <div>
+            <label for="signup-password-input" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
               Password
             </label>
-            <span style="font-size: 11px; color: var(--text-muted);">Demo: password123</span>
+            <input 
+              id="signup-password-input" 
+              type="password" 
+              class="form-control" 
+              placeholder="Create a password (min 6 characters)" 
+              required
+              autocomplete="new-password"
+              style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
+            />
           </div>
-          <input 
-            id="login-password-input" 
-            type="password" 
-            class="form-control" 
-            placeholder="Enter your password" 
-            required
-            autocomplete="current-password"
-            style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
-          />
+          <div>
+            <label for="signup-track-select" style="display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">
+              Onboarding Track
+            </label>
+            <select 
+              id="signup-track-select" 
+              class="form-control" 
+              style="background: var(--bg-surface); border-color: var(--border-subtle); padding: 12px 14px; font-size: 14px;"
+            >
+              <option value="General">General Onboarding Track</option>
+              <option value="Backend">Backend Engineering Track</option>
+              <option value="Platform">Platform Infrastructure Track</option>
+              <option value="DataOps">DataOps & Analytics Track</option>
+            </select>
+          </div>
+          <button 
+            id="btn-employee-signup" 
+            type="submit" 
+            class="btn-send" 
+            style="width: 100%; justify-content: center; padding: 12px; font-size: 14px; margin-top: 4px; background: linear-gradient(135deg, #10B981, #6366F1);"
+          >
+            <span id="btn-employee-signup-label">Create Account &amp; Sign In</span>
+          </button>
+        </form>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; text-align: center;">
+          Already have an account? 
+          <a href="javascript:void(0)" onclick="toggleAuthMode('signin')" style="color: var(--accent-indigo); font-weight: 600; text-decoration: none; margin-left: 4px;">
+            Sign In &rarr;
+          </a>
         </div>
-        <button 
-          id="btn-employee-login" 
-          type="submit" 
-          class="btn-send" 
-          style="width: 100%; justify-content: center; padding: 12px; font-size: 14px; margin-top: 4px;"
-        >
-          <span id="btn-employee-login-label">Sign In</span>
-        </button>
-      </form>
+      </div>
 
       <div id="auth-status" style="font-size: 13px; color: var(--text-muted); min-height: 20px; margin-bottom: 8px;"></div>
 
