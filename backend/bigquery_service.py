@@ -362,7 +362,32 @@ class BigQueryService:
         return []
 
     @classmethod
-    def get_team_escalation(cls, domain: str = "") -> List[Dict[str, Any]]:
+    def update_team_lead_vacation_status(cls, email: str, on_vacation: bool) -> bool:
+        """Dynamically toggles lead vacation status flag based on live calendar FreeBusy analysis."""
+        clean_email = email.replace("'", "\\'").lower()
+        vacation_flag = "TRUE" if on_vacation else "FALSE"
+        project = cls.get_project_id()
+        dataset = cls.get_dataset()
+        
+        # Check primary lead positions
+        sql_primary = (
+            f"UPDATE `{project}.{dataset}.team_directory_mesh` "
+            f"SET primary_on_vacation = {vacation_flag} "
+            f"WHERE LOWER(primary_email) = '{clean_email}'"
+        )
+        res_p = cls.execute_query(sql_primary)
+        
+        # Check backup lead positions 
+        sql_backup = (
+            f"UPDATE `{project}.{dataset}.team_directory_mesh` "
+            f"SET backup_on_vacation = {vacation_flag} "
+            f"WHERE LOWER(backup_email) = '{clean_email}'"
+        )
+        res_b = cls.execute_query(sql_backup)
+        return bool(res_p.get("success") or res_b.get("success"))
+
+    @classmethod
+    def get_team_escalation(cls) -> List[Dict[str, Any]]:
         """
         Retrieves team escalation directory mesh from table `team_directory_mesh`.
         """
@@ -432,6 +457,52 @@ class BigQueryService:
         )
         res = cls.execute_query(sql)
         return bool(res.get("success"))
+
+    @classmethod
+    def get_user_credentials(cls, email: str) -> Optional[Dict[str, Any]]:
+        clean_email = email.replace("'", "\\'").lower()
+        project = cls.get_project_id()
+        dataset = cls.get_dataset()
+        sql = f"SELECT * FROM `{project}.{dataset}.user_credentials` WHERE LOWER(email) = '{clean_email}' LIMIT 1"
+        res = cls.execute_query(sql)
+        if res.get("success") and res.get("rows"):
+            return res["rows"][0]
+        return None
+
+    @classmethod
+    def save_user_credentials(cls, email: str, password_hash: str) -> bool:
+        clean_email = email.replace("'", "\\'").lower()
+        clean_hash = password_hash.replace("'", "\\'")
+        project = cls.get_project_id()
+        dataset = cls.get_dataset()
+        sql = (
+            f"INSERT INTO `{project}.{dataset}.user_credentials` (email, password_hash, created_at) "
+            f"VALUES ('{clean_email}', '{clean_hash}', CURRENT_TIMESTAMP())"
+        )
+        res = cls.execute_query(sql)
+        return bool(res.get("success"))
+
+    @classmethod
+    def create_timesheet_record(cls, ts_dict: Dict[str, Any]) -> bool:
+        project = cls.get_project_id()
+        dataset = cls.get_dataset()
+        sql = (
+            f"INSERT INTO `{project}.{dataset}.timesheets` (timesheet_id, employee_id, period_start, period_end, hours_logged, status, due_date) "
+            f"VALUES ('{ts_dict['timesheet_id']}', '{ts_dict['employee_id']}', DATE('{ts_dict['period_start']}'), DATE('{ts_dict['period_end']}'), {ts_dict['hours_logged']}, '{ts_dict['status']}', DATE('{ts_dict['due_date']}'))"
+        )
+        res = cls.execute_query(sql)
+        return bool(res.get("success"))
+
+    @classmethod
+    def get_incidents_by_user(cls, employee_id: str) -> List[Dict[str, Any]]:
+        clean_id = employee_id.replace("'", "\\'")
+        project = cls.get_project_id()
+        dataset = cls.get_dataset()
+        sql = f"SELECT * FROM `{project}.{dataset}.incidents` WHERE created_by = '{clean_id}' ORDER BY created_at DESC"
+        res = cls.execute_query(sql)
+        if res.get("success"):
+            return res.get("rows", [])
+        return []
 
     @classmethod
     def test_connection(cls) -> Dict[str, Any]:

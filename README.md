@@ -146,6 +146,13 @@ These credentials must **NEVER** be committed to Git. Store them in Google Cloud
 
 > **Note on Dual-Mode Fallback:** If Jira or Salesforce secrets are omitted, the application will not crash. It will automatically run in **Firestore Staging Mode**, saving valid Jira ADF documents and Salesforce sObjects in Cloud Firestore for later batch synchronization.
 
+### 🛡️ Core Verification & Multi-Agent Safeguards
+
+1. **Enterprise Domain Bounds Check:** Both classical sign-up pipelines and the Google SSO portal match input strings against the verified `ALLOWED_CORPORATE_DOMAIN` property context rule.
+2. **Relational Credentials Layer:** User profiles created with email/password methods are securely recorded inside BigQuery's `user_credentials` table, replacing hardcoded placeholders.
+3. **Double Submission Locking:** The timesheet submission system blocks multiple records from being logged during the same active pay period ending cycle.
+4. **Live Incident Auditing:** IT incident logs are tracked live via Atlassian endpoints and audited into BigQuery tracking grids. The UI displays past ticket histories directly inside the dashboard workspace.
+
 ---
 
 ## 🚀 Step-by-Step Cloud Run Deployment

@@ -75,6 +75,12 @@
     const signupTab = document.getElementById("tab-btn-signup");
     dismissAuthAlert();
 
+    // Dynamic cleanup of login prompt labels
+    const pwdLabel = document.querySelector("label[for='login-password-input']");
+    if (pwdLabel && pwdLabel.textContent.includes("Demo:")) {
+        pwdLabel.textContent = "Password";
+    }
+
     if (mode === "signup") {
       if (signinContainer) signinContainer.style.display = "none";
       if (signupContainer) signupContainer.style.display = "block";
@@ -130,6 +136,12 @@
     setAuthStatus("Provisioning new employee profile in BigQuery...");
 
     try {
+      // Standard RFC-5322 compliant Email Validation regular expression pattern check
+      // const emailPattern = /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/;
+      // if (!emailPattern.test(email)) {
+      //   throw new Error("Invalid Format: Please input an authentic, correctly formatted corporate email address.");
+      // }
+
       const res = await fetch("/api/v1/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,10 +155,19 @@
           job_role: "Software Engineer"
         })
       });
-      const data = await res.json();
-      if (!res.ok || !data.token) {
-        throw new Error(data.detail || "Sign up failed.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || "Registration rejected by corporate workspace directory policies.");
       }
+      if (!data || !data.token) {
+        throw new Error("Authentication response signature missing corporate bearer token profile details.");
+      }
+
+      // Immediately wipe all form values clean upon successful registration
+      if (nameInput) nameInput.value = "";
+      if (emailInput) emailInput.value = "";
+      if (passwordInput) passwordInput.value = "";
+      
       await initializeSession(data.token);
     } catch (err) {
       showAuthAlert("Sign-Up Error", err.message || "Failed to create account.", "error");
@@ -636,6 +657,22 @@
       if (hoursInput && ts.hours_logged) {
         hoursInput.value = String(ts.hours_logged);
       }
+      
+      // Deactivate button structure if already recorded for this week
+      const submitBtn = document.getElementById("ts-submit-btn");
+      if (submitBtn) {
+          if (ts.status.toUpperCase() === "SUBMITTED" || ts.status.toUpperCase() === "APPROVED") {
+              submitBtn.disabled = true;
+              submitBtn.textContent = "Timesheet Already Finalized";
+              submitBtn.style.opacity = "0.5";
+              submitBtn.style.cursor = "not-allowed";
+          } else {
+              submitBtn.disabled = false;
+              submitBtn.textContent = "Submit Timesheet";
+              submitBtn.style.opacity = "1";
+              submitBtn.style.cursor = "pointer";
+          }
+      }
     } catch (err) {
       console.warn("Could not fetch timesheet status:", err);
     }
@@ -814,11 +851,37 @@
       }
     }
   }
+  async function renderUserTicketsList() {
+      const ticketBox = document.getElementById("user-tickets-list-container");
+      if (!ticketBox) return;
+      ticketBox.innerHTML = "<div style='color:var(--text-muted);font-size:11px;'>Loading recorded histories...</div>";
+      try {
+          const res = await apiRequest("/api/v1/incidents/my-tickets");
+          if (!res.incidents || res.incidents.length === 0) {
+              ticketBox.innerHTML = "<div style='color:var(--text-muted);font-size:11px;'>No active incidents reported for this profile.</div>";
+              return;
+          }
+          ticketBox.innerHTML = res.incidents.map(inc => `
+              <div style="background:rgba(255,255,255,0.03);padding:8px;border-radius:4px;margin-bottom:6px;border-left:3px solid var(--accent-rose);">
+                  <div style="display:flex;justify-content:space-between;font-weight:600;font-size:11px;">
+                      <span>${inc.incident_id} [${inc.severity}]</span>
+                      <span style="color:var(--accent-cyan); font-size:10px;">${inc.status}</span>
+                  </div>
+                  <div style="font-size:11px;color:var(--text-secondary);margin:2px 0;">${inc.summary}</div>
+                  <div style="font-size:9px;color:var(--text-muted);">Team: ${inc.assigned_team} • ${inc.created_at.slice(0,10)}</div>
+              </div>
+          `).join("");
+      } catch (e) {
+          ticketBox.innerHTML = "<div style='color:var(--accent-rose);font-size:11px;'>Failed to sync ticket list.</div>";
+      }
+  }
+
   function quickPrompt(txt) {
     if (txt === "Point of Contact" || txt === "Connect with Buddy" || txt === "Connect to Point of Contact") {
       openContactsModal();
       return;
     }
+
     if (txt === "Check Timesheet Status" || txt === "Check Timesheet") {
       openTimesheetModal();
       return;
@@ -1179,7 +1242,19 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
   function openIncidentModal() {
     const modal = document.getElementById("incident-modal");
     if (modal) modal.style.display = "grid";
+    
+    // Inject sub-history container dynamically if missing
+    const form = document.querySelector("#incident-modal form") || document.getElementById("incident-modal");
+    let container = document.getElementById("user-tickets-list-container");
+    if (!container && modal) {
+        const historyWrapper = document.createElement("div");
+        historyWrapper.style.cssText = "margin-top:16px;border-top:1px solid var(--border-subtle);padding-top:12px;max-height:150px;overflow-y:auto;";
+        historyWrapper.innerHTML = `<div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-primary)">Your Filed Tickets Archive</div><div id="user-tickets-list-container"></div>`;
+        modal.firstElementChild.appendChild(historyWrapper);
+    }
+    renderUserTicketsList();
   }
+
   function closeIncidentModal() {
     const modal = document.getElementById("incident-modal");
     if (modal) modal.style.display = "none";
@@ -1405,7 +1480,13 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
     setAuthLoading(true, "Verifying Credentials...");
     setAuthStatus("Verifying corporate credentials...");
     try {
+      // const emailPattern = /^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/;
+      // if (identity.includes("@") && !emailPattern.test(identity)) {
+      //   throw new Error("Invalid Identity Structure: Please verify your input matches a standard email format layout.");
+      // }
+
       const res = await fetch("/api/v1/auth/login", {
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identity, password })
@@ -1414,6 +1495,11 @@ gcloud storage buckets add-iam-policy-binding gs://patchamomma-505416-employee-a
       if (!res.ok || !data.token) {
         throw new Error(data.detail || "Invalid employee credentials or password.");
       }
+
+      // Clear structural workspace forms clean upon authentication clearance
+      if (identityInput) identityInput.value = "";
+      if (passwordInput) passwordInput.value = "";
+
       await initializeSession(data.token);
     } catch (err) {
       showAuthAlert("Sign-In Failed", err.message || "Invalid corporate credentials.", "error");

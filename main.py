@@ -117,9 +117,56 @@ def get_current_employee(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid or expired corporate identity profile.")
     return employee
 
+
+def verify_email_mailbox_exists(email: str) -> bool:
+    """Performs live DNS MX verification and basic SMTP handshake queries using dnspython to verify mailbox existence."""
+    import sys
+    try:
+        import dns.resolver
+        import smtplib
+        
+        domain = email.split('@')[-1].lower()
+        try:
+            # Step 1: Query DNS MX records to identify active routing nodes
+            mx_records = dns.resolver.resolve(domain, 'MX')
+            # Fix: Sort the records, then extract the top preference record [0]
+            sorted_records = sorted(mx_records, key=lambda rec: rec.preference)
+            top_mx_record = sorted_records[0] 
+            mail_server = str(top_mx_record.exchange).rstrip('.')
+            
+            
+            # Step 2: Initiate active low-level SMTP check
+            with smtplib.SMTP(mail_server, timeout=4) as server:
+                server.helo()
+                # Fix: Changed invalid 'bot@://...' to a syntactically correct email
+                server.mail('verification-bot@gserviceaccount.com')
+                code, _ = server.rcpt(email)
+                
+                # SMTP code 250 explicitly confirms the destination mailbox address exists
+                if code == 250:
+                    return True
+                elif 400 <= code < 600:
+                    return False
+                    
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+            print(f"Domain {domain} does not exist or has no MX records.")
+            return False
+        except (smtplib.SMTPConnectError, ConnectionRefusedError) as e:
+            print(f"Connection to {mail_server} failed or timed out: {e}")
+            return None  # Return None for indeterminate errors (like network blocks)
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            return None
+    except Exception as network_err:
+        print(f"[EmailExistenceCheck] Network validation note: {network_err}", file=sys.stderr)
+        
+    # Default fallback to True if strict institutional corporate firewalls block SMTP probing on port 25
+    return True
+
 # ----------------------------------------------------------------------------
 # 🔐 AUTHENTICATION & HEALTH ENDPOINTS
 # ----------------------------------------------------------------------------
+
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"status": "ok", "service": "Onboarding-Employee-Assistant-FastAPI", "timestamp": "2026-09-09T17:43:00Z"}
@@ -142,7 +189,6 @@ def login(payload: dict = Body(...)):
         "token": emp.employee_id, 
         "employee": emp.to_dict()
     }
-
 
 @app.post("/api/v1/auth/signup")
 def signup(payload: dict = Body(...)):
@@ -172,6 +218,7 @@ def signup(payload: dict = Body(...)):
         "token": emp.employee_id,
         "employee": emp.to_dict()
     }
+
 
 
 @app.post("/api/v1/auth/google")
@@ -235,8 +282,6 @@ def auth_google(payload: dict = Body(...)):
         "token": emp.employee_id, 
         "employee": emp.to_dict()
     }
-
-
 # ----------------------------------------------------------------------------
 # 📊 OPERATIONAL WORKFLOW ENDPOINTS
 # ----------------------------------------------------------------------------
@@ -353,6 +398,10 @@ def get_document(doc_id: str, employee = Depends(get_current_employee)):
 def points_of_contact(employee = Depends(get_current_employee)):
     return OperationsService.get_points_of_contact(employee, None)
 
+
+@app.get("/api/v1/incidents/my-tickets")
+def get_user_incidents(employee = Depends(get_current_employee)):
+    return {"incidents": OperationsService.get_incidents_by_user(employee.employee_id)}
 
 @app.post("/api/v1/incidents/create")
 def create_incident(payload: IncidentPayload, employee = Depends(get_current_employee)):

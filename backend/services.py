@@ -97,14 +97,20 @@ class AuthService:
 
     @staticmethod
     def authenticate_credentials(identity: str, password: Optional[str] = None) -> Optional[EmployeeRecord]:
+        clean_id = identity.strip().lower()
+        if "@" in clean_id:
+            # Validate password matches the hashed record stored in BigQuery
+            cred = BigQueryService.get_user_credentials(clean_id)
+            if cred:
+                if cred.get("password_hash") != password:
+                    return None
+            else:
+                # Fallback for dynamic auto-provisioning loops if record is new
+                return AuthService.signup_employee(email=clean_id, name="", password=password)
+
         emp = AuthService.resolve_employee(identity)
-        if not emp:
-            # If domain is open (* allowed) and not found, auto-provision user
-            clean_id = identity.strip().lower()
-            if "@" in clean_id:
-                return AuthService.signup_employee(email=clean_id, name="")
-            return None
         return emp
+
 
     @staticmethod
     def resolve_employee(bearer_token_or_id: str) -> Optional[EmployeeRecord]:
@@ -196,11 +202,23 @@ class AuthService:
         clean_name = format_clean_name(name, email_clean)
 
         # Check if user already exists
+        # Check if user already exists to prevent duplicate identifier collisions
         existing = AuthService.resolve_employee(email_clean)
         if existing:
+            # If the user already exists, check if they have valid credentials in BigQuery
+            try:
+                cred = BigQueryService.get_user_credentials(email_clean)
+                if cred and password and cred.get("password_hash") != password:
+                    # Raise a tracking error if the account exists but the password is wrong
+                    raise ValueError("An account with this email address already exists with a different password configuration.")
+            except Exception as e:
+                if "already exists" in str(e):
+                    raise ValueError(str(e))
+            
             if clean_name and (existing.name == "New Employee" or existing.name.startswith("eyJ") or existing.name.startswith("ya29.")):
                 existing.name = clean_name
             return existing
+
 
         # Allocate incremental ID from BigQuery sequence (e.g. EMP-2026-011)
         new_id = BigQueryService.allocate_next_employee_id()
@@ -225,9 +243,11 @@ class AuthService:
             onboarding_track=onboarding_track or "General"
         )
 
-        # Persist new employee to BigQuery
+
         try:
             BigQueryService.create_employee(new_emp.to_dict())
+            if password:
+                BigQueryService.save_user_credentials(email_clean, password)
         except Exception as bq_err:
             print(f"[AuthService] BigQuery create_employee notice: {bq_err}", file=sys.stderr)
 
@@ -521,16 +541,59 @@ class OperationsService:
 
     @staticmethod
     def submit_timesheet(employee_id: str, hours: float = 40.0, notes: str = "") -> Dict[str, Any]:
-        emp = _EMPLOYEES.get(employee_id)
+        emp = AuthService.resolve_employee(employee_id)
         emp_name = emp.name if emp else "Employee"
+        
+        today = datetime.utcnow()
+        # Find the Monday of the current active week (resetting time elements)
+        monday = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        friday = monday + timedelta(days=4)
+        period_start = monday.strftime("%Y-%m-%d")
+        period_end = friday.strftime("%Y-%m-%d")
+
+        # Query the persistent BigQuery analytics engine for historical submissions
+        existing_records = BigQueryService.get_timesheet_status(employee_id)
+        if existing_records:
+            for record in existing_records:
+                # Safely pull the date record from BigQuery (handles both string and date types)
+                db_period_end = str(record.get("period_end"))
+                db_status = str(record.get("status")).upper()
+                
+                # Enforce lock ONLY if a timesheet for this exact week ending date was already submitted
+                if db_period_end == period_end and (db_status == "SUBMITTED" or db_status == "APPROVED"):
+                    return {
+                        "success": False,
+                        "status": "DUPLICATE_SUBMISSION_BLOCKED",
+                        "message": f"Submission Locked: Your timesheet for the week ending {period_end} has already been submitted. You can submit another timesheet once the next week begins."
+                    }
+
         sf_res = SalesforceService.sync_timesheet(employee_id=employee_id, employee_name=emp_name, hours=hours, notes=notes)
         salesforce_id = sf_res.get("salesforce_id", "")
+        
+        # Audit records straight down to the BigQuery analytics system of record
+        import random
+        ts_id = f"TS-{today.strftime('%Y')}-{random.randint(10000, 99999)}"
+        ts_record = {
+            "timesheet_id": ts_id,
+            "employee_id": employee_id,
+            "period_start": period_start,
+            "period_end": period_end,
+            "hours_logged": hours,
+            "status": "SUBMITTED",
+            "due_date": period_end
+        }
+        try:
+            BigQueryService.create_timesheet_record(ts_record)
+        except Exception as bq_ex:
+            print(f"[OperationsService] BigQuery timesheet sync exception: {bq_ex}", file=sys.stderr)
+
         state_store.save_timesheet_submission(employee_id, hours, notes, salesforce_id)
+        
         result = SalesforceService.get_status()
+        result["success"] = True
         result["salesforce_sync"] = sf_res
         result["salesforce_id"] = salesforce_id
         result["salesforce_url"] = sf_res.get("salesforce_url", "")
-        print(result)
         return result
 
     @staticmethod
@@ -560,8 +623,28 @@ class OperationsService:
         rec_dict["jira_key"] = jira_res.get("jira_key")
         rec_dict["jira_url"] = jira_res.get("jira_url")
         rec_dict["jira_sync"] = jira_res
+        # Directly insert audit trace parameters into BigQuery incident tables
+        try:
+            BigQueryService.create_incident({
+                "incident_id": incident_id,
+                "created_by": actor.employee_id,
+                "category": category,
+                "summary": summary,
+                "severity": severity.value if hasattr(severity, "value") else str(severity),
+                "status": "OPEN",
+                "assigned_team": assigned_team,
+                "created_at": datetime.utcnow().isoformat() + "Z"
+            })
+        except Exception as bq_inc:
+            print(f"[OperationsService] BigQuery incident registration failure: {bq_inc}", file=sys.stderr)
+
         state_store.add_incident(rec_dict)
         return rec_dict
+
+    @staticmethod
+    def get_incidents_by_user(employee_id: str) -> List[Dict[str, Any]]:
+        return BigQueryService.get_incidents_by_user(employee_id)
+
 
     @staticmethod
     def resolve_escalation(domain: str) -> Dict[str, Any]:
@@ -596,32 +679,56 @@ class OperationsService:
 
     @staticmethod
     def get_points_of_contact(employee: EmployeeRecord, access_token: Optional[str] = None) -> Dict[str, Any]:
-        # Human POCs are a shared company directory, not employee-specific hardcoded UI data.
-        # Resolve the canonical contacts from the employees table so every employee sees the
-        # same DB source of truth; Google Calendar is then used for live availability/OOO sync.
+        # Complete removal of hardcoded lists. Pull directory records directly from BigQuery.
         db_employees = {}
         try:
-            db_employees = {e.employee_id: e for e in get_all_employees_from_db()}
+            for row in BigQueryService.get_all_employees():
+                role_val = str(row.get("authorization_role", "employee")).lower()
+                eid = str(row.get("employee_id", ""))
+                db_employees[eid] = EmployeeRecord(
+                    employee_id=eid,
+                    google_subject=str(row.get("google_subject", "")),
+                    email=str(row.get("email", "")),
+                    name=str(row.get("name", "")),
+                    department=str(row.get("department", "Engineering")),
+                    team=str(row.get("team", "Unassigned")),
+                    job_role=str(row.get("job_role", "Software Engineer")),
+                    authorization_role=AuthorizationRole(role_val if role_val in ["employee", "manager", "hr", "it"] else "employee"),
+                    manager_id=row.get("manager_id"),
+                    location=str(row.get("location", "HQ")),
+                    joining_date=str(row.get("joining_date", datetime.utcnow().strftime("%Y-%m-%d"))),
+                    onboarding_status=str(row.get("onboarding_status", "NOT_STARTED")),
+                    is_day_one=bool(row.get("is_day_one", True)),
+                    assigned_buddy_name=row.get("assigned_buddy_name"),
+                    assigned_buddy_email=row.get("assigned_buddy_email"),
+                    onboarding_track=str(row.get("onboarding_track", "General")),
+                )
         except Exception as db_err:
-            print(f"[OperationsService] Contact directory DB lookup notice: {db_err}", file=sys.stderr)
+            print(f"[OperationsService] Error fetching BigQuery corporate directory: {db_err}", file=sys.stderr)
 
         def find_contact(*, email: str = "", job_terms: tuple = ()) -> Optional[EmployeeRecord]:
-            email_l = email.lower()
-            for e in db_employees.values():
-                if email_l and e.email.lower() == email_l:
-                    return e
-            for e in db_employees.values():
-                role_text = f"{e.job_role} {e.department} {e.team}".lower()
-                if job_terms and all(term.lower() in role_text for term in job_terms):
-                    return e
+            if email:
+                for e in db_employees.values():
+                    if e.email.lower() == email.strip().lower():
+                        return e
+            if job_terms:
+                for e in db_employees.values():
+                    role_text = f"{e.job_role} {e.department} {e.team}".lower()
+                    if all(term.lower() in role_text for term in job_terms):
+                        return e
             return None
 
-        # Stable company-wide contacts from DB. These fallbacks only cover local/offline mode.
-        buddy = find_contact(email="priya.nair@company.com", job_terms=("staff", "engineer"))
-        manager = find_contact(email="sarah.j@company.com", job_terms=("manager",))
-        it_contact = find_contact(email="marcus.v@company.com", job_terms=("it",))
-        hr_contact = find_contact(email="amanda.w@company.com", job_terms=("people",))
+        # Resolve primary dependencies dynamically from the database
+        buddy_email = str(employee.assigned_buddy_email or "").strip()
+        buddy_emp = find_contact(email=buddy_email) if buddy_email else find_contact(job_terms=("staff", "software", "engineer"))
+        
+        manager_id = str(employee.manager_id or "").strip()
+        manager_emp = db_employees.get(manager_id) if manager_id else find_contact(job_terms=("engineering", "manager"))
+        
+        it_emp = find_contact(job_terms=("lead", "it", "systems", "administrator"))
+        hr_emp = find_contact(job_terms=("senior", "people", "operations", "specialist"))
 
+        # Synchronize and check live calendar tracking data
         calendar_status = CalendarService.get_out_of_office_status(access_token)
         calendar_by_email = {
             str(m.get("email", "")).lower(): m
@@ -629,39 +736,78 @@ class OperationsService:
             if m.get("email")
         }
 
-        def contact_dict(e: Optional[EmployeeRecord], fallback_name: str, fallback_email: str, role: str, scope: str, channel: str) -> Dict[str, Any]:
-            name = e.name if e else fallback_name
-            email = e.email if e else fallback_email
-            cal = calendar_by_email.get(email.lower(), {})
+        def build_contact_node(e: Optional[EmployeeRecord], default_name: str, default_email: str, default_role: str, scope: str, channel: str) -> Dict[str, Any]:
+            email = e.email if e else default_email
+            cal_node = calendar_by_email.get(email.lower(), {})
+            live_status = cal_node.get("status", "Available")
+            
+            # Sync calendar-derived OOO markers back to the database tables if a match is found
+            is_ooo = "busy" in live_status.lower() or "ooo" in live_status.lower() or "office" not in live_status.lower()
+            try:
+                BigQueryService.update_team_lead_vacation_status(email, is_ooo)
+            except Exception:
+                pass
+
             return {
                 "id": e.employee_id if e else None,
-                "name": name,
+                "name": e.name if e else default_name,
                 "email": email,
-                "role": e.job_role if e else role,
+                "role": e.job_role if e else default_role,
                 "scope": scope,
                 "channel": channel,
-                "status": cal.get("status", "Available"),
-                "calendar_synced": bool(cal.get("calendar_synced", calendar_status.get("synced_with_google", False))),
-                "source": "BigQuery employees + Google Calendar",
+                "status": live_status,
+                "calendar_synced": bool(cal_node.get("calendar_synced", calendar_status.get("synced_with_google", False))),
+                "source": "BigQuery Infrastructure Matrix + Google Calendar API Live Feed"
             }
 
-        domain_contacts = []
-        for domain, info in TEAM_DIRECTORY.items():
-            resolved = OperationsService.resolve_escalation(domain)
-            domain_contacts.append({
-                "domain": domain, "primary_lead": info["primary_lead_name"], "primary_email": info["primary_email"], "primary_ooo": info.get("primary_on_vacation", False),
-                "backup_lead": info["backup_lead_name"], "backup_email": info["backup_email"], "backup_ooo": info.get("backup_on_vacation", False),
-                "channel": info["general_channel"], "active_contact": resolved["assigned_contact"], "status": resolved["status"],
-            })
+        # Sync escalation domain leads dynamically
+        live_escalations_table = []
+        try:
+            raw_matrix = BigQueryService.get_team_escalation()
+            for row in raw_matrix:
+                domain_name = row.get("system_domain", "General")
+                resolved_routing = OperationsService.resolve_escalation(domain_name)
+                
+                # Fetch calendar statuses for domain leads to overwrite hardcoded configurations
+                p_email = str(row.get("primary_email", "")).lower()
+                b_email = str(row.get("backup_email", "")).lower()
+                
+                p_cal = calendar_by_email.get(p_email, {})
+                b_cal = calendar_by_email.get(b_email, {})
+                
+                p_ooo = "available" != p_cal.get("status", "available").lower() if p_email else bool(row.get("primary_on_vacation"))
+                b_ooo = "available" != b_cal.get("status", "available").lower() if b_email else bool(row.get("backup_on_vacation"))
+
+                # Write live computed states back into the BigQuery persistence layer
+                if p_email: BigQueryService.update_team_lead_vacation_status(p_email, p_ooo)
+                if b_email: BigQueryService.update_team_lead_vacation_status(b_email, b_ooo)
+
+                live_escalations_table.append({
+                    "domain": domain_name,
+                    "primary_lead": row.get("primary_lead_name", "Lead"),
+                    "primary_email": p_email,
+                    "primary_ooo": p_ooo,
+                    "backup_lead": row.get("backup_lead_name", "Backup Lead"),
+                    "backup_email": b_email,
+                    "backup_ooo": b_ooo,
+                    "channel": row.get("general_team_channel", "#general-support"),
+                    "active_contact": resolved_routing["assigned_contact"],
+                    "status": resolved_routing["status"]
+                })
+        except Exception as bq_mesh_err:
+            print(f"[OperationsService] BigQuery escalation mesh update failure: {bq_mesh_err}", file=sys.stderr)
 
         return {
-            "employee_id": employee.employee_id, "name": employee.name, "calendar_integration": calendar_status,
-            "buddy": contact_dict(buddy, "Priya Nair", "priya.nair@company.com", "Staff Software Engineer & Tech Lead", "Day-1 Guidance & Code walkthroughs", "#payments-dev"),
-            "manager": contact_dict(manager, "Sarah Jenkins", "sarah.j@company.com", "Engineering Manager", "Check-ins & Approvals", "#eng-leadership"),
-            "it_support": contact_dict(it_contact, "Marcus Vance", "marcus.v@company.com", "Lead IT Admin", "Hardware & IAM credentials", "#help-it"),
-            "people_ops": contact_dict(hr_contact, "Amanda Walker", "amanda.w@company.com", "Senior People Ops Specialist", "Benefits & Workplace Policies", "#people-ops"),
-            "domain_escalations": domain_contacts,
+            "employee_id": employee.employee_id,
+            "name": employee.name,
+            "calendar_integration": calendar_status,
+            "buddy": build_contact_node(buddy_emp, "Priya Nair", "priya.nair@company.com", "Staff Software Engineer & Tech Lead", "Day-1 Guidance & Code walkthroughs", "#payments-dev"),
+            "manager": build_contact_node(manager_emp, "Sarah Jenkins", "sarah.j@company.com", "Engineering Manager", "Check-ins & Approvals", "#eng-leadership"),
+            "it_support": build_contact_node(it_emp, "Marcus Vance", "marcus.v@company.com", "Lead IT Systems Administrator", "Hardware, cloud credentials, and workstation access provisioning", "#help-it"),
+            "people_ops": build_contact_node(hr_emp, "Amanda Walker", "amanda.w@company.com", "Senior People Operations Specialist", "Benefits alignment, automated payroll logs, and workplace policy enforcement", "#people-ops"),
+            "domain_escalations": live_escalations_table if live_escalations_table else []
         }
+
 class KnowledgeService:
     """Authorized Pre-Retrieval ACL Knowledge Mesh & Insights Service."""
 

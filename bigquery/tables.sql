@@ -34,6 +34,15 @@ CREATE OR REPLACE TABLE `patchamomma-505416.employee_ai.employees` (
 );
 
 -- ----------------------------------------------------------------------------
+-- Table 1b: User Authentication Credentials
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE TABLE `patchamomma-505416.employee_ai.user_credentials` (
+    email STRING NOT NULL,
+    password_hash STRING NOT NULL,
+    created_at TIMESTAMP NOT NULL
+);
+
+-- ----------------------------------------------------------------------------
 -- Table 2: Employee Onboarding Tasks
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE TABLE `patchamomma-505416.employee_ai.employee_onboarding_tasks` (

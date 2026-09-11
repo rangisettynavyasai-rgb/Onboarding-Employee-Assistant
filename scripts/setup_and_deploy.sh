@@ -143,8 +143,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --service-account="${SA_EMAIL}" \
   --allow-unauthenticated \
   --set-env-vars="GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${REGION},BIGQUERY_DATASET=${BQ_DATASET},GCS_BUCKET=${GCS_BUCKET},FIRESTORE_DATABASE_ID=${FIRESTORE_DB},ENVIRONMENT=production" \
-  --set-secrets="GEMINI_API_KEY=gemini-api-key:latest,FIREBASE_API_KEY=firebase-api-key:latest" \
-  --port=3000
+  --set-secrets="GEMINI_API_KEY=gemini-api-key:latest,FIREBASE_API_KEY=firebase-api-key:latest,JIRA_API_TOKEN=jira-api-token:latest,SALESFORCE_ACCESS_TOKEN=salesforce-token:latest" \
 
 
 echo ""
